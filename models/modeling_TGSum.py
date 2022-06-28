@@ -115,253 +115,6 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
 
 
 
-# class TGSumDecoderAttention(nn.Module):
-#     """Multi-headed attention from 'Attention Is All You Need' paper"""
-#
-#     def __init__(
-#             self,
-#             embed_dim: int,
-#             num_heads: int,
-#             dropout: float = 0.0,
-#             is_decoder: bool = False,
-#             bias: bool = True,
-#             topic: bool = True,
-#             split_noise: bool = True,
-#     ):
-#         super().__init__()
-#         self.embed_dim = embed_dim
-#         self.num_heads = num_heads
-#         self.dropout = dropout
-#         self.head_dim = embed_dim // num_heads
-#         if self.head_dim * num_heads != self.embed_dim:
-#             raise ValueError(
-#                 f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`:"
-#                 f" {num_heads})."
-#             )
-#         self.scaling = self.head_dim ** -0.5
-#         self.is_decoder = is_decoder
-#
-#         self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-#         self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-#         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-#         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-#
-#         self.use_topic = topic
-#         self.split_noise = split_noise
-#         if self.use_topic:
-#             self.linear_topic_keys = nn.Linear(embed_dim, self.num_heads * self.head_dim)
-#             self.linear_topic_vecs = nn.Linear(100, self.num_heads * self.head_dim)
-#             self.linear_topic_w = nn.Linear(self.num_heads * self.head_dim * 3, self.num_heads)
-#
-#     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-#         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
-#
-#     def shape(self, x):
-#         return x.view(self.bsz, -1, self.num_heads, self.head_dim).transpose(1, 2)
-#
-#     def forward(
-#             self,
-#             hidden_states: torch.Tensor,
-#             topic_vec=None,
-#             key_value_states: Optional[torch.Tensor] = None,
-#             past_key_value: Optional[Tuple[torch.Tensor]] = None,
-#             attention_mask: Optional[torch.Tensor] = None,
-#             layer_head_mask: Optional[torch.Tensor] = None,
-#             output_attentions: bool = False,
-#             lenn=False,
-#     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-#         """Input shape: Batch x Time x Channel"""
-#
-#         """
-#             - hidden_states: torch.Tensor,
-#                 @[Decoder self-attentive representations]
-#             - topic_vec_ge,
-#                 @[Topic model vector]
-#             - key_value_states: Optional[torch.Tensor],
-#                 @[encoder representations]
-#
-#         """
-#
-#         # if key_value_states are provided this layer is used as a cross-attention layer
-#         # for the decoder
-#         is_cross_attention = key_value_states is not None
-#         self.bsz, tgt_len, embed_dim = hidden_states.size()
-#         bsz = self.bsz
-#
-#
-#         # get query proj
-#         query_states = self.q_proj(hidden_states) * self.scaling
-#
-#         # get key, value proj
-#         if is_cross_attention and past_key_value is not None:
-#             # reuse k,v, cross_attentions
-#             key_states = past_key_value[0]
-#             value_states = past_key_value[1]
-#             if self.use_topic:
-#                 topic_key = past_key_value[2]
-#                 topic_vec = past_key_value[3]
-#
-#         elif is_cross_attention:
-#             # cross_attentions
-#             if self.use_topic:
-#                 topic_key = self._shape(self.linear_topic_keys(key_value_states).repeat(bsz, 1, 1), -1, bsz)
-#                 if self.split_noise:
-#                     topic_vec_summ = self.linear_topic_vecs(topic_vec[0])
-#                     topic_vec_noise = self.linear_topic_vecs(topic_vec[1])
-#                     topic_vec_summ = self.shape(topic_vec_summ)
-#                     topic_vec_noise = self.shape(topic_vec_noise)
-#                     topic_vec = (topic_vec_summ, topic_vec_noise)
-#                 else:
-#                     if bsz > 1:
-#                         import pdb;
-#                         pdb.set_trace()
-#                     topic_vec = self.linear_topic_vecs(topic_vec)
-#                     topic_vec = self.shape(topic_vec)
-#
-#             key_states = self._shape(self.k_proj(key_value_states).repeat(bsz, 1, 1), -1, bsz)
-#             value_states = self._shape(self.v_proj(key_value_states).repeat(bsz, 1, 1), -1, bsz)
-#
-#             # def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-#             #     return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
-#
-#
-#         elif past_key_value is not None:
-#             # reuse k, v, self_attention
-#             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-#             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
-#             if lenn:
-#                 print('here')
-#                 import pdb;pdb.set_trace()
-#             if self.split_noise:
-#                 topic_vec_summ = self.linear_topic_vecs(topic_vec[0])
-#                 topic_vec_noise = self.linear_topic_vecs(topic_vec[1])
-#                 topic_vec_summ = self.shape(topic_vec_summ)
-#                 topic_vec_noise = self.shape(topic_vec_noise)
-#                 topic_vec = (topic_vec_summ, topic_vec_noise)
-#             else:
-#
-#
-#
-#                 topic_vec = self.linear_topic_vecs(topic_vec)
-#                 topic_vec = self.shape(topic_vec)
-#
-#             # import pdb;pdb.set_trace()
-#             key_states = torch.cat([past_key_value[0], key_states], dim=2)
-#             value_states = torch.cat([past_key_value[1], value_states], dim=2)
-#
-#         else:
-#             # self_attention
-#             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
-#             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
-#
-#         if self.is_decoder:
-#             # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
-#             # Further calls to cross_attention layer can then reuse all cross-attention
-#             # key/value_states (first "if" case)
-#             # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
-#             # all previous decoder key/value_states. Further calls to uni-directional self-attention
-#             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-#             # if encoder bi-directional self-attention `past_key_value` is always `None`
-#             past_key_value = (key_states, value_states)
-#             if self.use_topic:
-#                 past_key_value = (key_states, value_states, topic_key, topic_vec)
-#
-#         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
-#         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
-#         key_states = key_states.view(*proj_shape)
-#         value_states = value_states.view(*proj_shape)
-#
-#         # query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
-#
-#         src_len = key_states.size(1)
-#         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2)) # scores
-#
-#         if self.use_topic:
-#             if self.split_noise:
-#                 topic_vec_summ = topic_vec[0] / math.sqrt(self.head_dim)
-#                 topic_scores_summ = torch.matmul(topic_vec_summ.unsqueeze(3), topic_key.unsqueeze(4)).squeeze_(-1)
-#                 topic_scores_summ = topic_scores_summ.transpose(2, 3).expand_as(attn_weights.view(bsz, self.num_heads, tgt_len, -1))
-#                 topic_vec_noise = topic_vec[1] / math.sqrt(self.head_dim)
-#                 topic_scores_noise = torch.matmul(topic_vec_noise.unsqueeze(3), topic_key.unsqueeze(4)).squeeze_(-1)
-#                 topic_scores_noise = topic_scores_noise.transpose(2, 3).expand_as(attn_weights.view(bsz, self.num_heads, tgt_len, -1))
-#                 topic_scores = topic_scores_summ - topic_scores_noise
-#
-#             else:
-#                 topic_vec = topic_vec / math.sqrt(self.head_dim)
-#                 try:
-#                     topic_scores = torch.matmul(topic_vec.unsqueeze(3), topic_key.unsqueeze(4)).squeeze_(-1)
-#                 except:
-#                     import pdb;pdb.set_trace()
-#                 topic_scores = topic_scores.transpose(2, 3).expand_as(attn_weights.unsqueeze(0))
-#
-#         if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
-#             raise ValueError(
-#                 f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
-#                 f" {attn_weights.size()}"
-#             )
-#
-#         if attention_mask is not None:
-#             if attention_mask.size() != (bsz, 1, tgt_len, src_len):
-#                 raise ValueError(
-#                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
-#                 )
-#             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
-#             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-#             if self.use_topic:
-#                 try:
-#                     mask = attention_mask.expand_as(attn_weights.view(bsz, self.num_heads, tgt_len, -1)).bool()
-#                 except:
-#                     import pdb;pdb.set_trace()
-#                 if self.use_topic:
-#                     topic_scores = topic_scores.masked_fill(mask, -1e18)
-#
-#         attn_weights = nn.functional.softmax(attn_weights, dim=-1) # atten probs
-#
-#         if layer_head_mask is not None:
-#             if layer_head_mask.size() != (self.num_heads,):
-#                 raise ValueError(
-#                     f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
-#                     f" {layer_head_mask.size()}"
-#                 )
-#             attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-#             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
-#
-#         if output_attentions:
-#             # this operation is a bit awkward, but it's required to
-#             # make sure that attn_weights keeps its gradient.
-#             # In order to do so, attn_weights have to be reshaped
-#             # twice and have to be reused in the following
-#             attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-#             attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
-#         else:
-#             attn_weights_reshaped = None
-#
-#         if self.use_topic:
-#             topic_attn = nn.functional.softmax(topic_scores)
-#             context_raw = torch.matmul(attn_weights, value_states)
-#             context_topic = torch.matmul(topic_attn, value_states.view(bsz, self.num_heads, -1, self.head_dim))
-#             p_vec = torch.cat([context_raw.view(bsz, self.num_heads, -1, self.head_dim), context_topic, query_states.view(bsz, self.num_heads, -1, self.head_dim)], -1).transpose(1, 2).contiguous().view(bsz, -1, self.num_heads * self.head_dim * 3)
-#             topic_p = torch.sigmoid(self.linear_topic_w(p_vec).transpose(1, 2)).unsqueeze(-1).reshape(bsz*self.num_heads, tgt_len, 1)
-#             attn_weights = (topic_p * attn_weights + (1 - topic_p) * topic_attn.reshape(bsz*self.num_heads, tgt_len, -1))
-#
-#         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-#         attn_output = torch.bmm(attn_probs, value_states)
-#
-#         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
-#             raise ValueError(
-#                 f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
-#                 f" {attn_output.size()}"
-#             )
-#
-#         attn_output = (
-#             attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
-#                 .transpose(1, 2)
-#                 .reshape(bsz, tgt_len, embed_dim)
-#         )
-#
-#         attn_output = self.out_proj(attn_output)
-#
-#         return attn_output, attn_weights_reshaped, past_key_value
 
 
 class Seq2SeqLMOutput(ModelOutput):
@@ -389,6 +142,209 @@ class LEDSeq2SeqModelOutput(ModelOutput):
     encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     encoder_global_attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+class LEDDecoderAttentionTopicAware(nn.Module):
+    """Multi-headed attention from 'Attention Is All You Need' paper"""
+
+    def __init__(
+        self,
+        embed_dim: int,
+        topic_dim: int,
+        num_heads: int,
+        dropout: float = 0.0,
+        is_decoder: bool = False,
+        bias: bool = True,
+    ):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.topic_dim = topic_dim
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.head_dim = embed_dim // num_heads
+        if self.head_dim * num_heads != self.embed_dim:
+            raise ValueError(
+                f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`:"
+                f" {num_heads})."
+            )
+        self.scaling = self.head_dim**-0.5
+        self.is_decoder = is_decoder
+
+        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+
+        self.topic_k_proj = nn.Linear(topic_dim, embed_dim, bias=bias)
+        self.topic_v_proj = nn.Linear(topic_dim, embed_dim, bias=bias)
+
+        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        # self.topic_q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+
+        self.linear_topic_w = nn.Linear(head_count * self.dim_per_head * 3, head_count)
+
+    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
+        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        key_value_states: Optional[torch.Tensor] = None,
+        key_value_states_topical: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """Input shape: Batch x Time x Channel"""
+
+        # if key_value_states are provided this layer is used as a cross-attention layer
+        # for the decoder
+        is_cross_attention = key_value_states is not None
+        bsz, tgt_len, embed_dim = hidden_states.size()
+
+        # get query proj
+        query_states = self.q_proj(hidden_states) * self.scaling
+        # get key, value proj
+        if is_cross_attention and past_key_value is not None:
+            # reuse k,v, cross_attentions
+            key_states = past_key_value[0]
+            value_states = past_key_value[1]
+
+            key_states_topic = past_key_value[2]
+            value_states_topic = past_key_value[3]
+
+
+        elif is_cross_attention:
+            # cross_attentions
+            key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
+            value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
+
+            key_states_topic = self._shape(self.topic_k_proj(key_value_states_topical), -1, bsz)
+            value_states_topic = self._shape(self.topic_v_proj(key_value_states_topical), -1, bsz)
+
+
+        elif past_key_value is not None:
+            # reuse k, v, self_attention
+            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            key_states = torch.cat([past_key_value[0], key_states], dim=2)
+            value_states = torch.cat([past_key_value[1], value_states], dim=2)
+
+            key_states_topic = self._shape(self.topic_k_proj(hidden_states), -1, bsz)
+            value_states_topic = self._shape(self.topic_v_proj(hidden_states), -1, bsz)
+            key_states_topic = torch.cat([past_key_value[2], key_states_topic], dim=2)
+            value_states_topic = torch.cat([past_key_value[3], value_states_topic], dim=2)
+
+        else:
+            # self_attention
+            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+
+        if self.is_decoder:
+            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+            # Further calls to cross_attention layer can then reuse all cross-attention
+            # key/value_states (first "if" case)
+            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+            # all previous decoder key/value_states. Further calls to uni-directional self-attention
+            # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
+            # if encoder bi-directional self-attention `past_key_value` is always `None`
+            past_key_value = (key_states, value_states, key_states_topic, value_states_topic)
+
+        proj_shape = (bsz * self.num_heads, -1, self.head_dim)
+
+        # query is the same for both token and topic...
+        query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
+
+        key_states = key_states.view(*proj_shape)
+        value_states = value_states.view(*proj_shape)
+
+        key_states = key_states_topic.view(*proj_shape)
+        value_states = value_states_topic.view(*proj_shape)
+
+        src_len = key_states.size(1)
+        attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+        attn_weights_topic = torch.bmm(query_states, key_states_topic.transpose(1, 2))
+
+        if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
+                f" {attn_weights.size()}"
+            )
+
+        if attention_mask is not None:
+            if attention_mask.size() != (bsz, 1, tgt_len, src_len):
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
+                )
+            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+
+            attn_weights_topic = attn_weights_topic.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
+            attn_weights_topic = attn_weights_topic.view(bsz * self.num_heads, tgt_len, src_len)
+
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+        attn_weights_topic = nn.functional.softmax(attn_weights_topic, dim=-1)
+        if layer_head_mask is not None:
+            if layer_head_mask.size() != (self.num_heads,):
+                raise ValueError(
+                    f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
+                    f" {layer_head_mask.size()}"
+                )
+            attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+
+            attn_weights_topic = layer_head_mask.view(1, -1, 1, 1) * attn_weights_topic.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights_topic = attn_weights_topic.view(bsz * self.num_heads, tgt_len, src_len)
+
+        if output_attentions:
+            # this operation is a bit awkward, but it's required to
+            # make sure that attn_weights keeps its gradient.
+            # In order to do so, attn_weights have to be reshaped
+            # twice and have to be reused in the following
+            attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
+
+            attn_weights_topic_reshaped = attn_weights_topic.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights_topic = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
+
+
+        else:
+            attn_weights_reshaped = None
+            attn_weights_topic_reshaped = None
+
+
+        attn_output = torch.bmm(attn_probs, value_states)
+        attn_output_topic = torch.bmm(attn_probs_topic, value_states_topic)
+
+        # combine attention vectors...
+        p_vec = torch.cat([attn_output, attn_output_topic, query], -1).transpose(1, 2) \
+            .contiguous().view(batch_size, -1, head_count * dim_per_head * 3)
+        topic_p = torch.sigmoid(self.linear_topic_w(p_vec).transpose(1, 2)).unsqueeze(-1)
+        attn_probs = topic_p * attn_probs + (1 - topic_p) * attn_probs_topic
+
+        attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+        # attn_probs_topic = nn.functional.dropout(attn_weights_topic, p=self.dropout, training=self.training)
+        attn_output = torch.bmm(attn_probs, value_states)
+
+
+
+        if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
+            )
+
+        attn_output = (
+            attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
+            .transpose(1, 2)
+            .reshape(bsz, tgt_len, embed_dim)
+        )
+
+        attn_output = self.out_proj(attn_output)
+
+        return attn_output, attn_weights_reshaped, past_key_value
+
+
 
 class LEDTopicDecoderAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -552,25 +508,25 @@ class TGSumDecoderLayer(nn.Module):
         self.activation_dropout = config.activation_dropout
 
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-        self.encoder_attn = LEDDecoderAttention(
-            self.embed_dim,
-            config.decoder_attention_heads,
-            dropout=config.attention_dropout,
-            is_decoder=True,
-        )
+        # self.encoder_attn = LEDDecoderAttention(
+        #     self.embed_dim,
+        #     config.decoder_attention_heads,
+        #     dropout=config.attention_dropout,
+        #     is_decoder=True,
+        # )
 
         if self.use_topic:
 
-            self.encoder_attn_topic = LEDTopicDecoderAttention(
+            self.encoder_attn_topic = LEDDecoderAttentionTopicAware(
                 self.embed_dim,
-                100,
-                config.decoder_attention_heads,
+                topic_dim=100,
+                num_heads=config.decoder_attention_heads,
                 dropout=config.attention_dropout,
                 is_decoder=True,
             )
             # self.fc3 = nn.Linear(self.embed_dim * 2, self.embed_dim)
 
-        self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+        # self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
         self.encoder_attn_layer_norm_topic = nn.LayerNorm(self.embed_dim)
         self.fc1 = nn.Linear(self.embed_dim, config.decoder_ffn_dim)
         self.fc2 = nn.Linear(config.decoder_ffn_dim, self.embed_dim)
@@ -633,14 +589,14 @@ class TGSumDecoderLayer(nn.Module):
             # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
             cross_attn_past_key_value = past_key_value[-4:-2:] if past_key_value is not None else None
 
-
             if self.use_topic:
                 cross_attn_past_key_value_topic = past_key_value[-2:] if past_key_value is not None else None
                 # try:
                 hidden_states, cross_attn_weights_topic, cross_attn_present_key_value_topic = \
-                    self.encoder_attn_topic(
+                self.encoder_attn_topic(
                     hidden_states=hidden_states,  # decoder query
-                    key_value_states=topic_vec_ge.repeat(hidden_states.size(0), 1, 1) if self.training else topic_vec_ge,  # topic memory
+                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states, # encoder memory
+                    key_value_states_topical=topic_vec_ge.repeat(hidden_states.size(0), 1, 1) if self.training else topic_vec_ge,  # topic memory
                     # key_value_states=topic_vec_ge.repeat(hidden_states.size(0), 1, 1) if self.training else topic_vec_ge[None, :, :],  # topic memory #5
                     attention_mask=encoder_attention_mask,
                     # attention_mask=encoder_attention_mask[:, :, :, 0][:, :, :, None],
@@ -655,15 +611,15 @@ class TGSumDecoderLayer(nn.Module):
                 hidden_states = self.encoder_attn_layer_norm_topic(hidden_states)
                 # import pdb;pdb.set_trace()
 
-            hidden_states, cross_attn_weights, cross_attn_present_key_value = \
-            self.encoder_attn(
-                hidden_states=hidden_states, # decoder query
-                key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states, # encoder memory
-                attention_mask=encoder_attention_mask,
-                layer_head_mask=cross_attn_layer_head_mask,
-                past_key_value=cross_attn_past_key_value,
-                output_attentions=output_attentions,
-            )
+            # hidden_states, cross_attn_weights, cross_attn_present_key_value = \
+            # self.encoder_attn(
+            #     hidden_states=hidden_states, # decoder query
+            #     key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states, # encoder memory
+            #     attention_mask=encoder_attention_mask,
+            #     layer_head_mask=cross_attn_layer_head_mask,
+            #     past_key_value=cross_attn_past_key_value,
+            #     output_attentions=output_attentions,
+            # )
 
 
                 # hidden_states = self.fc3(torch.cat([hidden_states_words, hidden_states_topic], dim=-1))
