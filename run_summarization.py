@@ -32,9 +32,9 @@ from datasets import load_dataset, load_metric
 import transformers
 from filelock import FileLock
 
-# from models.modeling_TGSum import TGSumForConditionalGeneration
 from models.GSum_trainer import TGSumTrainer
-from models.modeling_TGSum import TGSumForConditionalGeneration
+# from models.modeling_TGSum import TGSumForConditionalGeneration
+from models.sequential_TGSum.modeling_TGSum import TGSumForConditionalGeneration
 from models.tokenization_TGSum import TGSumTokenizer
 from transformers import (
     AutoConfig,
@@ -168,7 +168,7 @@ class DataTrainingArguments:
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
     preprocessing_num_workers: Optional[int] = field(
-        default=1,
+        default=5,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     max_source_length: Optional[int] = field(
@@ -238,7 +238,7 @@ class DataTrainingArguments:
         },
     )
     num_beams: Optional[int] = field(
-        default=None,
+        default=3,
         metadata={
             "help": (
                 "Number of beams to use for evaluation. This argument will be passed to ``model.generate``, "

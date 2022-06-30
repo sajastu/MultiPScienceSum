@@ -75,7 +75,7 @@ def train_emb(args):
 
         documents.append(' '.join(pr_instances))
 
-    sp = WhiteSpacePreprocessingStopwords(documents=documents, vocabulary_size=5000)
+    sp = WhiteSpacePreprocessingStopwords(documents=documents, vocabulary_size=3000)
     preprocessed_docs, unpreprocessed_docs, vocabulary, retained_indices = sp.preprocess()
 
     pool = Pool(16)

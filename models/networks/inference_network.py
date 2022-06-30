@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from torch import nn
 import torch
+from torch.nn.init import xavier_uniform_
 
 
 class ContextualInferenceNetwork(nn.Module):
@@ -71,7 +72,6 @@ class ContextualInferenceNetwork(nn.Module):
 
         return mu, log_sigma
 
-
 class CombinedInferenceNetwork(nn.Module):
 
     """Inference Network."""
@@ -121,7 +121,25 @@ class CombinedInferenceNetwork(nn.Module):
         self.f_sigma = nn.Linear(hidden_sizes[-1], output_size)
         self.f_sigma_batchnorm = nn.BatchNorm1d(output_size, affine=False)
 
+        for p in self.f_sigma.parameters():
+            self._set_parameter_linear(p)
+
+        for p in self.f_mu.parameters():
+            self._set_parameter_linear(p)
+
+        for p in self.adapt_bert.parameters():
+            self._set_parameter_linear(p)
+
+        for p in self.input_layer.parameters():
+            self._set_parameter_linear(p)
+
         self.dropout_enc = nn.Dropout(p=self.dropout)
+
+    def _set_parameter_linear(self, p):
+        if p.dim() > 1:
+            xavier_uniform_(p)
+        else:
+            p.data.zero_()
 
     def forward(self, x, x_bert, labels=None):
         """Forward pass."""
@@ -133,7 +151,10 @@ class CombinedInferenceNetwork(nn.Module):
         if labels is not None:
             x = torch.cat((x, labels), 1)
 
-        x = self.input_layer(x)
+        try:
+            x = self.input_layer(x)
+        except:
+            import pdb;pdb.set_trace()
         x = self.activation(x)
         x = self.hiddens(x)
         x = self.dropout_enc(x)

@@ -82,7 +82,10 @@ class DecoderNetwork(nn.Module):
             self.beta = self.beta.cuda()
         self.beta = nn.Parameter(self.beta)
         nn.init.xavier_uniform_(self.beta)
-        self.topic_emb = nn.Parameter(torch.empty(self.n_components, 100))
+
+        self.topic_emb = nn.Parameter(torch.zeros(self.n_components, hidden_sizes[0]))
+
+        # import pdb;pdb.set_trace()
 
         # self.beta_batchnorm = nn.BatchNorm1d(input_size, affine=False)
 
@@ -114,6 +117,8 @@ class DecoderNetwork(nn.Module):
                 torch.matmul(theta, self.beta),
             dim=1)
 
+            # import pdb;
+            # pdb.set_trace()
             # import pdb;pdb.set_trace()
             topic_emb = torch.matmul(theta, self.topic_emb)
 

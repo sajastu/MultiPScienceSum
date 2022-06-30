@@ -344,6 +344,12 @@ class TGSumTrainer(Seq2SeqTrainer):
                     topic_tr_loss += topic_loss_step
                     lm_tr_loss += lm_loss_step
 
+                # if tr_loss == 0:
+                    # print('tr_loss==0')
+                    # import pdb;pdb.set_trace()
+
+                # import pdb;
+                # pdb.set_trace()
                 self.current_flos += float(self.floating_point_ops(inputs))
 
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
@@ -467,7 +473,8 @@ class TGSumTrainer(Seq2SeqTrainer):
                 xm.mark_step()
 
             logs: Dict[str, float] = {}
-
+            # import pdb;
+            # pdb.set_trace()
             # all_gather + mean() to get average loss over all processes
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
             tp_tr_loss_scalar = self._nested_gather(topic_tr_loss).mean().item()
@@ -520,8 +527,11 @@ class TGSumTrainer(Seq2SeqTrainer):
 
 
         ## combine losses
+        # import pdb;
+        # pdb.set_trace()
+
         lm_loss = loss
-        loss = 0.99 * loss + 0.01 * topic_loss
+        loss = loss + (0.1 * topic_loss)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -534,7 +544,6 @@ class TGSumTrainer(Seq2SeqTrainer):
 
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
-            self.scaler.scale(topic_loss).backward()
         else:
             loss.backward()
 
@@ -574,9 +583,9 @@ class TGSumTrainer(Seq2SeqTrainer):
             {'params': [p for n, p in small_lr_params.items() if any(nd in n for nd in no_decay)],
              'weight_decay': 0.0, 'lr': self.args.learning_rate},
             {'params': [p for n, p in large_lr_params.items() if not any(nd in n for nd in no_decay)],
-             'weight_decay': self.args.weight_decay, 'lr': 5e-5},
+             'weight_decay': self.args.weight_decay, 'lr': 1e-3},
             {'params': [p for n, p in large_lr_params.items() if any(nd in n for nd in no_decay)],
-             'weight_decay': 0.0, 'lr': 5e-5},
+             'weight_decay': 0.0, 'lr': 1e-3},
 
         ]
 

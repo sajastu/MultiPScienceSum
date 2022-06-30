@@ -1,4 +1,3 @@
-
 # coding=utf-8
 # Copyright 2021 The Fairseq Authors and The HuggingFace Inc. team. All rights reserved.
 #
@@ -113,10 +112,6 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
     return shifted_input_ids
 
 
-
-
-
-
 class Seq2SeqLMOutput(ModelOutput):
 
     loss: Optional[torch.FloatTensor] = None
@@ -129,6 +124,7 @@ class Seq2SeqLMOutput(ModelOutput):
     encoder_last_hidden_state: Optional[torch.FloatTensor] = None
     encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
+
 
 class LEDSeq2SeqModelOutput(ModelOutput):
 
@@ -188,7 +184,6 @@ class LEDDecoderAttentionTopicAware(nn.Module):
             self.linear_topic_w = nn.Linear(self.num_heads * self.head_dim * 3, self.num_heads)
 
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        # self.topic_q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
 
@@ -201,6 +196,7 @@ class LEDDecoderAttentionTopicAware(nn.Module):
         key_value_states: Optional[torch.Tensor] = None,
         key_value_states_topical: Optional[torch.Tensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value_topic: Optional[Tuple[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
@@ -216,7 +212,7 @@ class LEDDecoderAttentionTopicAware(nn.Module):
         # get query proj
         query_states = self.q_proj(hidden_states) * self.scaling
         # get key, value proj
-        if is_cross_attention and past_key_value is not None:
+        if is_cross_attention and past_key_value is not None and past_key_value_topic is not None:
             # reuse k,v, cross_attentions
             key_states = past_key_value[0]
             value_states = past_key_value[1]
@@ -227,15 +223,18 @@ class LEDDecoderAttentionTopicAware(nn.Module):
 
         elif is_cross_attention:
             # cross_attentions
-            key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
-            value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
+            try:
+                key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
+                value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
+            except:
+                import pdb;pdb.set_trace()
 
             if self.inc_topic:
                 key_states_topic = self._shape(self.topic_k_proj(key_value_states_topical), -1, bsz)
                 value_states_topic = self._shape(self.topic_v_proj(key_value_states_topical), -1, bsz)
 
 
-        elif past_key_value is not None:
+        elif past_key_value is not None and past_key_value_topic is not None:
             # reuse k, v, self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
@@ -305,7 +304,6 @@ class LEDDecoderAttentionTopicAware(nn.Module):
                 attn_weights_topic = attn_weights_topic.view(bsz * self.num_heads, tgt_len, src_len)
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-
         if self.inc_topic:
             attn_weights_topic = nn.functional.softmax(attn_weights_topic, dim=-1)
 
@@ -337,29 +335,42 @@ class LEDDecoderAttentionTopicAware(nn.Module):
 
         else:
             attn_weights_reshaped = None
+            attn_weights_topic_reshaped = None
 
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
         if self.inc_topic:
             attn_probs_topic = nn.functional.dropout(attn_weights_topic, p=self.dropout, training=self.training)
 
         attn_output = torch.bmm(attn_probs, value_states)
+
+        attn_output = (
+            attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
+                .transpose(1, 2)
+                .reshape(bsz, tgt_len, embed_dim)
+        )
+
+        def unshape(x):
+            """  compute context """
+            return x.transpose(1, 2).contiguous() \
+                .view(bsz, -1, self.num_heads * self.head_dim)
+
         if self.inc_topic:
             attn_output_topic = torch.bmm(attn_probs_topic, value_states_topic)
 
-        # if attn_probs.size(0) == 32:
-        #     import pdb;pdb.set_trace()
-        # combine attention vectors...
+            attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
+            query_states = query_states.view(bsz, self.num_heads, tgt_len, self.head_dim)
+            attn_output_topic = attn_output_topic.view(bsz, self.num_heads, tgt_len, self.head_dim)
+
+            # import pdb;pdb.set_trace()
+            # p_vec = torch.cat([attn_output, attn_output_topic, query_states], -1).transpose(1, 2).contiguous().view(bsz*self.num_heads, -1, self.num_heads * self.head_dim * 3)
+            # p_vec = torch.cat([attn_output.view(bsz, self.num_heads, tgt_len, -1), attn_output_topic, query_states], -1).transpose(1, 2).contiguous().view(bsz, -1, self.num_heads * self.head_dim * 3)
             p_vec = torch.cat([attn_output, attn_output_topic, query_states], -1).transpose(1, 2).contiguous().view(bsz, -1, self.num_heads * self.head_dim * 3)
             topic_p = torch.sigmoid(self.linear_topic_w(p_vec).transpose(1, 2)).unsqueeze(-1)
-            try:
-                attn_probs = topic_p.reshape(bsz*self.num_heads, -1, 1) * attn_probs + (1 - topic_p).reshape(bsz*self.num_heads, -1, 1) * attn_probs_topic
-            except:
-                import pdb;pdb.set_trace()
-            # attn_probs_topic = nn.functional.dropout(attn_weights_topic, p=self.dropout, training=self.training)
-            try:
-                attn_output = torch.bmm(attn_probs, value_states)
-            except:
-                import pdb;pdb.set_trace()
+            # attn_probs = topic_p.reshape(bsz*self.num_heads, -1, 1) * attn_probs + (1 - topic_p).reshape(bsz*self.num_heads, -1, 1) * attn_probs_topic
+            attn_probs = topic_p * attn_probs.view(bsz, self.num_heads, tgt_len, -1) + (1 - topic_p) * attn_probs_topic.view(bsz, self.num_heads, tgt_len, -1)
+            # attn_probs = topic_p * attn_probs + (1 - topic_p) * attn_probs_topic
+            attn_output = torch.bmm(attn_probs.reshape(bsz * self.num_heads, tgt_len, src_len), value_states)
+
 
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
@@ -368,15 +379,15 @@ class LEDDecoderAttentionTopicAware(nn.Module):
             )
 
         attn_output = (
-            attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
-            .transpose(1, 2)
+            attn_output
+            # attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
+            # .transpose(1, 2)
             .reshape(bsz, tgt_len, embed_dim)
         )
 
         attn_output = self.out_proj(attn_output)
 
         return attn_output, attn_weights_reshaped, past_key_value
-
 
 
 class LEDTopicDecoderAttention(nn.Module):
@@ -525,12 +536,10 @@ class LEDTopicDecoderAttention(nn.Module):
 
 
 class TGSumDecoderLayer(nn.Module):
-    def __init__(self, config: LEDConfig, use_topic=True, k=0, init_k=5):
+    def __init__(self, config: LEDConfig, use_topic=True, k=0):
         super().__init__()
         self.embed_dim = config.d_model
         self.use_topic = use_topic
-        self.k = k
-        self.init_k = init_k
 
         self.self_attn = LEDDecoderAttention(
             embed_dim=self.embed_dim,
@@ -538,11 +547,12 @@ class TGSumDecoderLayer(nn.Module):
             dropout=config.attention_dropout,
             is_decoder=True,
         )
+        self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+
         self.dropout = config.dropout
         self.activation_fn = ACT2FN[config.activation_function]
         self.activation_dropout = config.activation_dropout
 
-        self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
         # self.encoder_attn = LEDDecoderAttention(
         #     self.embed_dim,
         #     config.decoder_attention_heads,
@@ -554,17 +564,17 @@ class TGSumDecoderLayer(nn.Module):
 
             self.encoder_attn = LEDDecoderAttentionTopicAware(
                 self.embed_dim,
-                topic_dim=100,
-                num_heads=config.decoder_attention_heads,
+                200,
+                config.decoder_attention_heads,
                 dropout=config.attention_dropout,
                 is_decoder=True,
+                init_k=-1,
                 k=k,
-                init_k=init_k,
             )
+            self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+
             # self.fc3 = nn.Linear(self.embed_dim * 2, self.embed_dim)
 
-        # self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-        self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
         self.fc1 = nn.Linear(self.embed_dim, config.decoder_ffn_dim)
         self.fc2 = nn.Linear(config.decoder_ffn_dim, self.embed_dim)
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
@@ -618,22 +628,23 @@ class TGSumDecoderLayer(nn.Module):
 
         # Cross-Attention Block
         cross_attn_present_key_value = None
+        cross_attn_weights = None
+        cross_attn_present_key_value_topic = None
+        cross_attn_weights_topic = None
 
         if encoder_hidden_states is not None:
             residual = hidden_states
 
             # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
-            # cross_attn_past_key_value = past_key_value[-4:-2:] if past_key_value is not None else None
 
             if self.use_topic:
-                if self.k > self.init_k:
-                    cross_attn_past_key_value = past_key_value[-4:] if past_key_value is not None else None
-                else:
-                    cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
-
+                cross_attn_past_key_value_topic = past_key_value[2:] if past_key_value is not None else None
                 # try:
-                hidden_states, cross_attn_weights, cross_attn_present_key_value = \
-                self.encoder_attn(
+                # import pdb;
+                # pdb.set_trace()
+
+                hidden_states, cross_attn_weights_topic, cross_attn_present_key_value_topic = \
+                    self.encoder_attn(
                     hidden_states=hidden_states,  # decoder query
                     key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states, # encoder memory
                     key_value_states_topical=topic_vec_ge.repeat(hidden_states.size(0), 1, 1) if self.training else topic_vec_ge,  # topic memory
@@ -641,15 +652,20 @@ class TGSumDecoderLayer(nn.Module):
                     attention_mask=encoder_attention_mask,
                     # attention_mask=encoder_attention_mask[:, :, :, 0][:, :, :, None],
                     layer_head_mask=cross_attn_layer_head_mask,
-                    past_key_value=cross_attn_past_key_value,
+                    past_key_value=cross_attn_past_key_value_topic,
                     output_attentions=output_attentions,
                 )
+                # import pdb;
+                # pdb.set_trace()
                 # except:
                 #     import pdb;pdb.set_trace()
                 hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
                 hidden_states = residual + hidden_states
                 hidden_states = self.encoder_attn_layer_norm(hidden_states)
+                # residual = hidden_states
                 # import pdb;pdb.set_trace()
+
+            # cross_attn_past_key_value = past_key_value[2:4] if past_key_value is not None else None
 
             # hidden_states, cross_attn_weights, cross_attn_present_key_value = \
             # self.encoder_attn(
@@ -660,23 +676,16 @@ class TGSumDecoderLayer(nn.Module):
             #     past_key_value=cross_attn_past_key_value,
             #     output_attentions=output_attentions,
             # )
+            # import pdb;pdb.set_trace()
 
-
-                # hidden_states = self.fc3(torch.cat([hidden_states_words, hidden_states_topic], dim=-1))
-
-            # else:
-            #     hidden_states = hidden_states_words
 
             # hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
             # hidden_states = residual + hidden_states
             # hidden_states = self.encoder_attn_layer_norm(hidden_states)
 
-            # add cross-attn to positions 3,4 of present_key_value tuple
-            # if self.use_topic:
-            #     present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_topic
-            # else:
-            present_key_value = present_key_value + cross_attn_present_key_value
-            # present_key_value_topic = present_key_value_topic + cross_attn_present_key_value
+            # present_key_value = present_key_value + cross_attn_present_key_value + cross_attn_present_key_value_topic
+            present_key_value = present_key_value + cross_attn_present_key_value_topic
+            # import pdb;pdb.set_trace()
 
         # Fully Connected
         residual = hidden_states
@@ -690,7 +699,7 @@ class TGSumDecoderLayer(nn.Module):
         outputs = (hidden_states,)
 
         if output_attentions:
-            outputs += (self_attn_weights, cross_attn_weights)
+            outputs += (self_attn_weights, cross_attn_weights, cross_attn_weights_topic)
 
         if use_cache:
             outputs += (present_key_value,)
@@ -703,7 +712,6 @@ class TGSumDecoderLayer(nn.Module):
 class TGSumDecoder(LEDDecoder):
     """
     Transformer decoder consisting of *config.decoder_layers* layers. Each layer is a [`LEDDecoderLayer`]
-
     Args:
         config: LEDConfig
         embed_tokens (nn.Embedding): output embedding
@@ -725,7 +733,7 @@ class TGSumDecoder(LEDDecoder):
             self.max_target_positions,
             config.d_model,
         )
-        self.layers = nn.ModuleList([TGSumDecoderLayer(config, use_topic=use_topic, k=idx) for idx in range(config.decoder_layers)])
+        self.layers = nn.ModuleList([TGSumDecoderLayer(config, use_topic=use_topic) for _ in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
         self.gradient_checkpointing = True
@@ -755,17 +763,13 @@ class TGSumDecoder(LEDDecoder):
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
                 Indices of input sequence tokens in the vocabulary. Padding will be ignored by default should you
                 provide it.
-
                 Indices can be obtained using [`LEDTokenizer`]. See [`PreTrainedTokenizer.encode`] and
                 [`PreTrainedTokenizer.__call__`] for details.
-
                 [What are input IDs?](../glossary#input-ids)
             attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
                 Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
-
                 - 1 for tokens that are **not masked**,
                 - 0 for tokens that are **masked**.
-
                 [What are attention masks?](../glossary#attention-mask)
             global_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
                 Mask to decide the attention given on each token, local attention or global attention. Tokens with
@@ -774,7 +778,6 @@ class TGSumDecoder(LEDDecoder):
                 example, for classification, the <s> token should be given global attention. For QA, all question
                 tokens should also have global attention. Please refer to the [Longformer
                 paper](https://arxiv.org/abs/2004.05150) for more details. Mask values selected in `[0, 1]`:
-
                 - 0 for local attention (a sliding window attention),
                 - 1 for global attention (tokens that attend to all other tokens, and all other tokens attend to them).
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, encoder_sequence_length, hidden_size)`, *optional*):
@@ -783,31 +786,23 @@ class TGSumDecoder(LEDDecoder):
             encoder_attention_mask (`torch.LongTensor` of shape `(batch_size, encoder_sequence_length)`, *optional*):
                 Mask to avoid performing cross-attention on padding tokens indices of encoder input_ids. Mask values
                 selected in `[0, 1]`:
-
                 - 1 for tokens that are **not masked**,
                 - 0 for tokens that are **masked**.
-
                 [What are attention masks?](../glossary#attention-mask)
             head_mask (`torch.Tensor` of shape `(decoder_layers, decoder_attention_heads)`, *optional*):
                 Mask to nullify selected heads of the attention modules. Mask values selected in `[0, 1]`:
-
                 - 1 indicates the head is **not masked**,
                 - 0 indicates the head is **masked**.
-
             cross_attn_head_mask (`torch.Tensor` of shape `(decoder_layers, decoder_attention_heads)`, *optional*):
                 Mask to nullify selected heads of the cross-attention modules. Mask values selected in `[0, 1]`:
-
                 - 1 indicates the head is **not masked**,
                 - 0 indicates the head is **masked**.
-
             past_key_values (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `use_cache=True` is passed or when `config.use_cache=True`):
                 Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
                 shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`) and 2 additional tensors of
                 shape `(batch_size, num_heads, encoder_sequence_length, embed_size_per_head)`.
-
                 Contains pre-computed hidden-states (key and values in the self-attention blocks and in the
                 cross-attention blocks) that can be used (see `past_key_values` input) to speed up sequential decoding.
-
                 If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those
                 that don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of
                 all ``decoder_input_ids``` of shape `(batch_size, sequence_length)`. inputs_embeds (`torch.FloatTensor`
@@ -959,6 +954,8 @@ class TGSumDecoder(LEDDecoder):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                 )
+            # if torch.isnan(layer_outputs[0][0][0][0]):
+            #     import pdb;pdb.set_trace()
 
             hidden_states = layer_outputs[0]
 
@@ -1000,8 +997,6 @@ class TGSumModel(LEDModel):
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
 
         self.encoder = LEDEncoder(config, self.shared)
-        self.encoder.gradient_checkpointing = True
-
         self.decoder = TGSumDecoder(config, self.shared, use_topic=use_topic)
 
         # Initialize weights and apply final processing
@@ -1011,7 +1006,7 @@ class TGSumModel(LEDModel):
 
         if use_topic:
             #### TOPIC MODELING
-            topic_emb_size = 100
+            topic_emb_size = 200
             # self.loss_lambda = 0.001
             # self.voc_wrapper = VocabWrapper("word2vec")
             # self.voc_wrapper.load_emb("/disk1/sajad/w2v_embeds/w2v_mup.emb")
@@ -1023,8 +1018,8 @@ class TGSumModel(LEDModel):
             #                               embeddings=voc_emb)
 
             self.n_components = 100
-            self.topic_model = DecoderNetwork(input_size=5001, bert_size=1024, infnet='combined', n_components=self.n_components, model_type='prodLDA',
-                                        hidden_sizes=(100, 100), activation='softplus',
+            self.topic_model = DecoderNetwork(input_size=3001, bert_size=config.d_model, infnet='combined', n_components=self.n_components, model_type='prodLDA',
+                                        hidden_sizes=(topic_emb_size, topic_emb_size), activation='softplus',
                                         dropout=0.2, learn_priors=True, label_size=0)
 
 
@@ -1037,7 +1032,7 @@ class TGSumModel(LEDModel):
             #     self.topic_gate_linear_noise = nn.Linear(config.d_model + topic_emb_size, topic_emb_size)
             #     self.topic_emb_linear_noise = nn.Linear(config.d_model, topic_emb_size)
             # else:
-            self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, topic_emb_size)
+            self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, topic_emb_size  )
             self.topic_emb_linear = nn.Linear(config.d_model, topic_emb_size)
 
             if self.use_topic:
@@ -1137,7 +1132,10 @@ class TGSumModel(LEDModel):
         topic_vec = topic_vec_all.unsqueeze(1).expand(bsz, max_len, -1)
         mapped_vec = vec
 
-        gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
+        try:
+            gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
+        except:
+            import pdb;pdb.set_trace()
         fused_vec = (1 - gate) * topic_vec + gate * self.topic_emb_linear(mapped_vec)
 
         return fused_vec
@@ -1186,6 +1184,7 @@ class TGSumModel(LEDModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # import pdb;pdb.set_trace()
         # Using this like Bart, as LED is derived from it. So far
         # No checkpoint on the hub exists that uses that in practice.
         # https://github.com/huggingface/transformers/blob/ac3cb660cad283163f7c73cad511124e845ca388/src/transformers/models/bart/modeling_bart.py#L1153
@@ -1243,12 +1242,10 @@ class TGSumModel(LEDModel):
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
             posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(source_bow, encoder_outputs[0][:, 0], labels=None) # X_contexual is the source embedding
 
-            topic_vec_ge = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
 
+            topic_vec_ge = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
             if self.training:
                 topic_vec_ge = (topic_vec_ge.view(1, attention_mask.size(1), -1))
-            # else:
-            #     import pdb;pdb.set_trace()
                 # import pdb;pdb.set_trace()
                 # topic_emb = (topic_emb[:, :, None].view(1, attention_mask.size(1), -1))
 
@@ -1386,7 +1383,6 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
             config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
             (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
-
         Returns:
         """
         # self.set_split_noise(split_noise)
@@ -1435,12 +1431,16 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             loss_fct = CrossEntropyLoss()
             labels = pad_sequence(labels[0], batch_first=True, padding_value=-100).unsqueeze(0).cuda()
             masked_lm_loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.view(-1))
+            # if (torch.isnan(masked_lm_loss)):
+            #     import pdb;pdb.set_trace()
             if self.use_topic:
                 source_bow, word_dists, prior_mean, prior_variance, posterior_mean, \
                 posterior_variance, posterior_log_variance = outputs.topic_info
 
                 # backward pass
                 self.n_components = self.led.n_components
+
+                # import pdb;pdb.set_trace()
                 kl_loss, rl_loss = self._topic_loss(
                     source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance,
                     posterior_log_variance
@@ -1829,6 +1829,21 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         # import pdb;pdb.set_trace()
 
         # import pdb;pdb.set_trace()
+
+        # add encoder_attn_topic keys to state_dict...
+        # initialize it with encocer_attn keys...
+
+        # added_params = {}
+        # for n, p in state_dict.items():
+        #     if 'encoder_attn.q_proj' in n or 'encoder_attn.out_proj' in n:
+        #         import pdb;pdb.set_trace()
+                # added_params[n.replace('encoder_attn', 'encoder_attn_topic')] = p
+
+        # now update state_dict keys...
+        # state_dict.update(added_params)
+
+        # import pdb;pdb.set_trace()
+
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,
             state_dict,
@@ -1858,192 +1873,11 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 "mismatched_keys": mismatched_keys,
                 "error_msgs": error_msgs,
             }
-            # import pdb;pdb.set_trace()
+            # make sure all params are requrires_grad True in the model!
+
+            # for n, param in model.named_parameters():
+            #     param.requires_grad = True
+
             return model, loading_info
 
         return model
-
-    # @classmethod
-    # def _load_pretrained_model(
-    #         cls,
-    #         model,
-    #         state_dict,
-    #         loaded_keys,
-    #         resolved_archive_file,
-    #         pretrained_model_name_or_path,
-    #         ignore_mismatched_sizes=False,
-    #         sharded_metadata=None,
-    #         _fast_init=True,
-    #         low_cpu_mem_usage=False,
-    #         device_map=None,
-    #         offload_folder=None,
-    #         offload_state_dict=False,
-    #         dtype=None,
-    # ):
-    #
-    #     if device_map is not None and "disk" in device_map.values() and offload_folder is None:
-    #         raise ValueError(
-    #             "The current `device_map` had weights offloaded to the disk. Please provide an `offload_folder` for"
-    #             " them."
-    #         )
-    #     # Retrieve missing & unexpected_keys
-    #     model_state_dict = model.state_dict()
-    #     expected_keys = list(model_state_dict.keys())
-    #     prefix = model.base_model_prefix
-    #
-    #     def _fix_key(key):
-    #         if "beta" in key:
-    #             return key.replace("beta", "bias")
-    #         if "gamma" in key:
-    #             return key.replace("gamma", "weight")
-    #         return key
-    #
-    #     original_loaded_keys = loaded_keys
-    #     loaded_keys = [_fix_key(key) for key in loaded_keys]
-    #
-    #     if len(prefix) > 0:
-    #         has_prefix_module = any(s.startswith(prefix) for s in loaded_keys)
-    #         expects_prefix_module = any(s.startswith(prefix) for s in expected_keys)
-    #     else:
-    #         has_prefix_module = False
-    #         expects_prefix_module = False
-    #
-    #     # key re-naming operations are never done on the keys
-    #     # that are loaded, but always on the keys of the newly initialized model
-    #     remove_prefix_from_model = not has_prefix_module and expects_prefix_module
-    #     add_prefix_to_model = has_prefix_module and not expects_prefix_module
-    #
-    #     if remove_prefix_from_model:
-    #         expected_keys_not_prefixed = [s for s in expected_keys if not s.startswith(prefix)]
-    #         expected_keys = [".".join(s.split(".")[1:]) if s.startswith(prefix) else s for s in expected_keys]
-    #     elif add_prefix_to_model:
-    #         expected_keys = [".".join([prefix, s]) for s in expected_keys]
-    #
-    #     import pdb;pdb.set_trace()
-    #     missing_keys = list(set(expected_keys) - set(loaded_keys))
-    #     unexpected_keys = list(set(loaded_keys) - set(expected_keys))
-    #
-    #     # Some models may have keys that are not in the state by design, removing them before needlessly warning
-    #     # the user.
-    #     if cls._keys_to_ignore_on_load_missing is not None:
-    #         for pat in cls._keys_to_ignore_on_load_missing:
-    #             missing_keys = [k for k in missing_keys if re.search(pat, k) is None]
-    #
-    #     if cls._keys_to_ignore_on_load_unexpected is not None:
-    #         for pat in cls._keys_to_ignore_on_load_unexpected:
-    #             unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-    #
-    #     # retrieve weights on meta device and put them back on CPU.
-    #     # retrieve unintialized modules and initialize before maybe overriding that with the pretrained weights.
-    #     if _fast_init:
-    #         uninitialized_modules = model.retrieve_modules_from_names(
-    #             missing_keys, add_prefix=add_prefix_to_model, remove_prefix=remove_prefix_from_model
-    #         )
-    #         for module in uninitialized_modules:
-    #             model._init_weights(module)
-    #
-    #     # Make sure we are able to load base models as well as derived models (with heads)
-    #     # start_prefix = "led"
-    #     model_to_load = model
-    #     # if len(cls.base_model_prefix) > 0 and not hasattr(model, cls.base_model_prefix) and has_prefix_module:
-    #     #     start_prefix = "led"
-    #     # if len(cls.base_model_prefix) > 0 and hasattr(model, cls.base_model_prefix) and not has_prefix_module:
-    #     #     model_to_load = getattr(model, cls.base_model_prefix)
-    #     #     if any(key in expected_keys_not_prefixed for key in loaded_keys):
-    #     #         raise ValueError(
-    #     #             "The state dictionary of the model you are trying to load is corrupted. Are you sure it was "
-    #     #             "properly saved?"
-    #     #         )
-    #     #     if device_map is not None:
-    #     #         device_map = {k.replace(f"{cls.base_model_prefix}.", ""): v for k, v in device_map.items()}
-    #
-    #
-    #
-    #     def _find_mismatched_keys(
-    #             state_dict,
-    #             model_state_dict,
-    #             loaded_keys,
-    #             add_prefix_to_model,
-    #             remove_prefix_from_model,
-    #             ignore_mismatched_sizes,
-    #     ):
-    #         mismatched_keys = []
-    #         if ignore_mismatched_sizes:
-    #             for checkpoint_key in loaded_keys:
-    #                 model_key = checkpoint_key
-    #                 if remove_prefix_from_model:
-    #                     # The model key starts with `prefix` but `checkpoint_key` doesn't so we add it.
-    #                     model_key = f"{prefix}.{checkpoint_key}"
-    #                 elif add_prefix_to_model:
-    #                     # The model key doesn't start with `prefix` but `checkpoint_key` does so we remove it.
-    #                     model_key = ".".join(checkpoint_key.split(".")[1:])
-    #
-    #                 if (
-    #                         model_key in model_state_dict
-    #                         and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape
-    #                 ):
-    #                     mismatched_keys.append(
-    #                         (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
-    #                     )
-    #                     del state_dict[checkpoint_key]
-    #         return mismatched_keys
-    #
-    #     mismatched_keys = _find_mismatched_keys(
-    #         state_dict,
-    #         model_state_dict,
-    #         original_loaded_keys,
-    #         add_prefix_to_model,
-    #         remove_prefix_from_model,
-    #         ignore_mismatched_sizes,
-    #     )
-    #     error_msgs = _load_state_dict_into_model(model_to_load, state_dict, start_prefix)
-    #     import pdb;pdb.set_trace()
-    #
-    #     if len(error_msgs) > 0:
-    #         error_msg = "\n\t".join(error_msgs)
-    #         if "size mismatch" in error_msg:
-    #             error_msg += (
-    #                 "\n\tYou may consider adding `ignore_mismatched_sizes=True` in the model `from_pretrained` method."
-    #             )
-    #         raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msg}")
-    #
-    #     if len(unexpected_keys) > 0:
-    #         logger.warning(
-    #             f"Some weights of the model checkpoint at {pretrained_model_name_or_path} were not used when"
-    #             f" initializing {model.__class__.__name__}: {unexpected_keys}\n- This IS expected if you are"
-    #             f" initializing {model.__class__.__name__} from the checkpoint of a model trained on another task or"
-    #             " with another architecture (e.g. initializing a BertForSequenceClassification model from a"
-    #             " BertForPreTraining model).\n- This IS NOT expected if you are initializing"
-    #             f" {model.__class__.__name__} from the checkpoint of a model that you expect to be exactly identical"
-    #             " (initializing a BertForSequenceClassification model from a BertForSequenceClassification model)."
-    #         )
-    #     else:
-    #         logger.info(f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
-    #     if len(missing_keys) > 0:
-    #         logger.warning(
-    #             f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-    #             f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
-    #             " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
-    #         )
-    #     elif len(mismatched_keys) == 0:
-    #         logger.info(
-    #             f"All the weights of {model.__class__.__name__} were initialized from the model checkpoint at"
-    #             f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the checkpoint"
-    #             f" was trained on, you can already use {model.__class__.__name__} for predictions without further"
-    #             " training."
-    #         )
-    #     if len(mismatched_keys) > 0:
-    #         mismatched_warning = "\n".join(
-    #             [
-    #                 f"- {key}: found shape {shape1} in the checkpoint and {shape2} in the model instantiated"
-    #                 for key, shape1, shape2 in mismatched_keys
-    #             ]
-    #         )
-    #         logger.warning(
-    #             f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-    #             f" {pretrained_model_name_or_path} and are newly initialized because the shapes did not"
-    #             f" match:\n{mismatched_warning}\nYou should probably TRAIN this model on a down-stream task to be able"
-    #             " to use it for predictions and inference."
-    #         )
-    #
-    #     return model, missing_keys, unexpected_keys, mismatched_keys, error_msgs

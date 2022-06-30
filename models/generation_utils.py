@@ -226,7 +226,7 @@ class GenerationMixin(GenerationMixin):
             )
 
         # 6. determine generation mode
-        num_beams = 4
+        num_beams = 3
         is_constraint_gen_mode = constraints is not None
         is_greedy_gen_mode = (num_beams == 1) and (num_beam_groups == 1) and do_sample is False and constraints is None
         is_sample_gen_mode = (num_beams == 1) and (num_beam_groups == 1) and do_sample is True and constraints is None
