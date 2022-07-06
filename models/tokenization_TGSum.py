@@ -158,27 +158,41 @@ class TGSumTokenizer(LEDTokenizer):
     def set_global_idf(self):
         self.idf_info = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt")
 
-    def generate_src_bow(self, topic_src_info):
-
+    def generate_src_bow(self, topic_src_infos, input_ids, doc_id, ids):
+        all_bows = []
+        truncate_section = input_ids.count(0)
         vocab_size = self.idf_info["voc_size"]
-        all_bow = torch.zeros([vocab_size], dtype=torch.float)
         all_file_counter = self.idf_info["all"]
         file_num = self.idf_info["num"]
-        all_counter = topic_src_info["all"]
-        all_counter_sum = sum(all_counter.values())
-        for key, value in all_counter.items():
-            all_tf = value / all_counter_sum
-            all_file_count = all_file_counter[key]
-            # if self.args.use_idf:
-            # import pdb;pdb.set_trace()
-            all_idf = math.log(file_num / (all_file_count + 1.))
-            # else:
-            #     all_idf = 0. if all_file_count > self.args.max_word_count or \
-            #         all_file_count < self.args.min_word_count else 1.
+        # import pdb;pdb.set_trace()
 
-            all_bow[int(key)] = all_tf * all_idf
 
-        return all_bow
+        for topic_src_info in topic_src_infos["section_stats"][:truncate_section]:
+            all_bow = torch.zeros([vocab_size], dtype=torch.float)
+            all_counter = topic_src_info
+            ## all counter is a list of tokens for sections...
+            all_counter_sum = sum(all_counter.values())
+
+            for key, value in all_counter.items():
+                all_tf = value / all_counter_sum
+                all_file_count = all_file_counter[int(key)]
+                # if self.args.use_idf:
+                # import pdb;pdb.set_trace()
+                all_idf = math.log(file_num / (all_file_count + 1.))
+                # else:
+                #     all_idf = 0. if all_file_count > self.args.max_word_count or \
+                #         all_file_count < self.args.min_word_count else 1.
+
+                all_bow[int(key)] = all_tf * all_idf
+            all_bows.append(all_bow)
+        # try:
+            # all_bows = np.array(all_bows)
+        # except:
+        #     import pdb;pdb.set_trace()
+        if len(all_bows) != input_ids.count(0):
+            import pdb;pdb.set_trace()
+        assert len(all_bows) == input_ids.count(0), "N/A equal sections"
+        return all_bows
 
     def generate_summ_bow(self, topic_summ_infos):
         all_bows = []
@@ -305,8 +319,8 @@ class TGSumTokenizer(LEDTokenizer):
 
 
         if topic_info_tuple is not None:
-            encoded_inputs["src_bow"] = self.generate_src_bow(topic_info_tuple[0])
-            encoded_inputs["summ_bow"] = self.generate_summ_bow(topic_info_tuple[1])
+            encoded_inputs["src_bow"] = self.generate_src_bow(topic_info_tuple,  encoded_inputs["input_ids"], doc_ids, ids)
+            # encoded_inputs["summ_bow"] = self.generate_summ_bow(topic_info_tuple[1])
 
         # Check lengths
         self._eventual_warn_about_too_long_sequence(encoded_inputs["input_ids"], max_length, verbose)
@@ -330,7 +344,7 @@ class TGSumTokenizer(LEDTokenizer):
 
     def _batch_encode_plus(
         self,
-        batch_text_or_text_pairs: None,
+        batch_text_or_text_pairs= None,
         add_special_tokens: bool = True,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
         doc_ids=None,
@@ -378,16 +392,28 @@ class TGSumTokenizer(LEDTokenizer):
             )
 
         input_ids = []
+        for idx, ids_or_pair_ids in enumerate(batch_text_or_text_pairs):
+            # if not isinstance(ids_or_pair_ids, (list, tuple)):
+            #     ids, pair_ids = ids_or_pair_ids, None
+            # elif is_split_into_words and not isinstance(ids_or_pair_ids[0], (list, tuple)):
+            ids, pair_ids = ids_or_pair_ids, None
 
-        for ids_or_pair_ids in batch_text_or_text_pairs:
-            if not isinstance(ids_or_pair_ids, (list, tuple)):
-                ids, pair_ids = ids_or_pair_ids, None
-            elif is_split_into_words and not isinstance(ids_or_pair_ids[0], (list, tuple)):
-                ids, pair_ids = ids_or_pair_ids, None
-            else:
-                ids, pair_ids = ids_or_pair_ids
+            # if doc_ids[idx] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
+            #     import pdb;
+            #     pdb.set_trace()
+            # else:
+            #     ids, pair_ids = ids_or_pair_ids
 
-            first_ids = get_input_ids(ids)
+            # ids is a list of lists (sections)
+
+            first_ids = []
+            for id in ids:
+                first_id = get_input_ids(id)
+                first_ids += first_id + [2, 0]
+            first_ids = first_ids[:-1]
+            # if doc_ids[idx] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
+            #     import pdb;
+            #     pdb.set_trace()
             second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
             input_ids.append((first_ids, second_ids))
 
@@ -411,6 +437,55 @@ class TGSumTokenizer(LEDTokenizer):
         )
 
         return BatchEncoding(batch_outputs, is_target=is_target)
+
+
+    def prepare_seq2seq_batch(
+                self,
+                src_texts: List[str],
+                tgt_texts: Optional[List[str]] = None,
+                max_length: Optional[int] = None,
+                max_target_length: Optional[int] = None,
+                padding: str = "longest",
+                return_tensors: str = None,
+                truncation: bool = True,
+                **kwargs,
+        ) -> BatchEncoding:
+
+            # warnings.warn(formatted_warning, FutureWarning)
+            # mBART-specific kwargs that should be ignored by other models.
+            kwargs.pop("src_lang", None)
+            kwargs.pop("tgt_lang", None)
+            if max_length is None:
+                max_length = self.model_max_length
+
+            import pdb;pdb.set_trace()
+            model_inputs = self(
+                src_texts,
+                add_special_tokens=True,
+                return_tensors=return_tensors,
+                max_length=max_length,
+                padding=padding,
+                truncation=truncation,
+                **kwargs,
+            )
+            if tgt_texts is None:
+                return model_inputs
+            # Process tgt_texts
+            if max_target_length is None:
+                max_target_length = max_length
+            with self.as_target_tokenizer():
+                labels = self(
+                    tgt_texts,
+                    add_special_tokens=True,
+                    return_tensors=return_tensors,
+                    padding=padding,
+                    max_length=max_target_length,
+                    truncation=truncation,
+                    **kwargs,
+                )
+            model_inputs["labels"] = labels["input_ids"]
+            return model_inputs
+
 
     def _batch_prepare_for_model(
         self,
@@ -448,7 +523,7 @@ class TGSumTokenizer(LEDTokenizer):
                 second_ids,
                 sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
                 doc_ids=doc_ids[idx] if doc_ids is not None else None,
-                topic_info_tuple=(topic_info_tuple["topic_info"][idx], topic_info_tuple["topic_summ_info"][idx]) if topic_info_tuple is not None else None,
+                topic_info_tuple=(topic_info_tuple["topic_info"][idx]) if topic_info_tuple is not None else None,
                 add_special_tokens=add_special_tokens,
                 padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
                 truncation=truncation_strategy.value,

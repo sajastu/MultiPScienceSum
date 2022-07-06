@@ -13,6 +13,9 @@ import spacy
 from data_processor.preprocess_text import WhiteSpacePreprocessingStopwords
 
 nlp = spacy.load('en_core_sci_lg')
+import nltk
+from nltk.corpus import stopwords
+sws = stopwords.words('english')
 
 def get_sentence_tokens(text):
     doc_nlp = nlp(text)
@@ -45,8 +48,6 @@ def _parse_paper(param):
 def train_emb(args):
     data_dir = os.path.abspath(args.data_path)
     print("Preparing to process %s ..." % data_dir)
-    raw_files = glob.glob(pjoin(data_dir, '*_complete.jsonl'))
-    # raw_files = [g for g in glob.glob(pjoin(data_dir, '*.jsonl')) if 'train' not in g]
 
     ex_num = 0
     vocab_wrapper = VocabWrapper(args.mode, args.emb_size)
@@ -56,7 +57,7 @@ def train_emb(args):
     instances = []
 
     for corpus_type in ['train', 'val']:
-        for json_f in glob.glob('/disk1/sajad/datasets/sci/mup/single_files/' + f'/{corpus_type}/' + '*.json'):
+        for json_f in glob.glob(f'{data_dir}/' + f'/{corpus_type}/' + '*.json'):
             instances.append(json.load(open(json_f)))
 
 
@@ -64,27 +65,23 @@ def train_emb(args):
     documents = []
     for ins in instances:
         pr_instances = []
-        for sent_tokens in ins['source_sents']:
-            pr_instances.append(' '.join(sent_tokens))
-        documents.append(' '.join(pr_instances))
+        for section in ins['sections_txt_tokenized']:
+            pr_instances.append(section['text'])
+        documents.extend(pr_instances)
 
-        for summary in ins['summary']:
+        # for summary in ins['summaries']:
             # summ_sent_tokens = get_sentence_tokens(summary)
             # for summ_sent_token in summ_sent_tokens:
-                pr_instances.append(summary)
+            #     pr_instances.append(summary)
 
-        documents.append(' '.join(pr_instances))
+        # documents.append(' '.join(pr_instances))
 
-    sp = WhiteSpacePreprocessingStopwords(documents=documents, vocabulary_size=3000)
+    sp = WhiteSpacePreprocessingStopwords(documents=documents, vocabulary_size=3000, min_words=2, stopwords_list=sws)
     preprocessed_docs, unpreprocessed_docs, vocabulary, retained_indices = sp.preprocess()
+    pool = Pool(17)
 
-    pool = Pool(16)
     for tokens in tqdm(pool.imap_unordered(get_sentence_tokens, preprocessed_docs), total=len(preprocessed_docs)):
         file_ex.append(tokens)
-
-    # for doc in tqdm(preprocessed_docs, total=len(preprocessed_docs)):
-    #     tokens = get_sentence_tokens(doc)
-    #     file_ex.append(tokens)
 
     print("Training embeddings...")
     vocab_wrapper.train(file_ex)
@@ -96,7 +93,7 @@ def train_emb(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-mode", default='word2vec', type=str, choices=['glove', 'word2vec'])
-    parser.add_argument("-data_path", default="data_processor/mup/", type=str)
+    parser.add_argument("-data_path", default="/disk1/sajad/datasets/sci/mup/single_tokenized/", type=str)
     parser.add_argument("-emb_size", default=100, type=int)
     parser.add_argument("-emb_path", default="/disk1/sajad/w2v_embeds/w2v_mup_reduced.emb", type=str)
 

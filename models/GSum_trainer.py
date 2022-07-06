@@ -497,7 +497,7 @@ class TGSumTrainer(Seq2SeqTrainer):
             self.log(logs)
 
         metrics = None
-        if self.control.should_evaluate:
+        if self.control.should_evaluate or self.state.global_step == 1000:
             metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
             self._report_to_hp_search(trial, epoch, metrics)
 
@@ -531,7 +531,7 @@ class TGSumTrainer(Seq2SeqTrainer):
         # pdb.set_trace()
 
         lm_loss = loss
-        loss = loss + (0.1 * topic_loss)
+        # loss = (loss) + (0.01 * topic_loss)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -548,6 +548,7 @@ class TGSumTrainer(Seq2SeqTrainer):
             loss.backward()
 
         return loss.detach(), topic_loss.detach(), lm_loss.detach()
+
 
     def create_optimizer(self):
         """
@@ -631,6 +632,7 @@ class TGSumTrainer(Seq2SeqTrainer):
             labels (each being optional).
         """
 
+        section_idx = ((inputs['input_ids'][0] == 0).nonzero(as_tuple=True)[0])
         if not self.args.predict_with_generate or prediction_loss_only:
             return super().prediction_step(
                 model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys
@@ -656,10 +658,12 @@ class TGSumTrainer(Seq2SeqTrainer):
             generation_inputs = inputs[self.model.encoder.main_input_name]
         else:
             generation_inputs = inputs[self.model.main_input_name]
+        # import pdb;pdb.set_trace()
         generated_tokens = self.model.generate(
             generation_inputs,
             src_bow=inputs['src_bow'],
             doc_ids=inputs['doc_ids'],
+            section_token_index=section_idx,
             **gen_kwargs,
         )
         # in case the batch is shorter than max length, the output should be padded

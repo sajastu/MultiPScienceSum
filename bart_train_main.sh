@@ -57,7 +57,7 @@ export DS_DIR=/disk1/sajad/datasets/sci/mup/hf_format/
 #python3 -m torch.distributed.launch --nproc_per_node=2 run_summarization.py \
 CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --model_name_or_path $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-decAttn-8 \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-decAttn-new-2 \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
@@ -73,13 +73,13 @@ CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --predict_with_generate \
     --max_grad_norm 1 \
     --lr_scheduler_type linear \
-    --eval_steps 4150 --save_steps 4150 \
+    --eval_steps 250 --save_steps 4150 \
     --train_file $DS_DIR/train.parquet \
     --validation_file $DS_DIR/val.parquet \
     --do_train \
     --do_eval \
-    --report_to wandb \
-    --run_name mup-led-arxiv-decAttn-8
+    --report_to none \
+    --run_name mup-led-arxiv-decAttn-new-2
 
 #    --metric_for_best_model rougeL \
     #    --test_file $DS_DIR/test.reduced.complete.parquet \

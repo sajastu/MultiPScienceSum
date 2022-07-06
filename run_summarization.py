@@ -20,6 +20,7 @@ Fine-tuning the library models for sequence to sequence.
 import json
 import logging
 import os
+import random
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
@@ -168,7 +169,7 @@ class DataTrainingArguments:
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
     preprocessing_num_workers: Optional[int] = field(
-        default=5,
+        default=1,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     max_source_length: Optional[int] = field(
@@ -220,7 +221,7 @@ class DataTrainingArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=None,
+        default=10,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -540,26 +541,29 @@ def main():
         inputs, targets, src_ids, tgt_ids, topic_info, topic_sum_info = [], [], [], [], [], []
         for i in range(len(examples[text_column])):
             if examples[text_column][i] is not None and examples[summary_column][i] is not None:
-                inputs.append(examples[text_column][i].strip())
+                inputs.append([s.replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '')
+                              .replace('<s>', '').replace('</s>', '').replace('<mask>', '')
+                              .replace('\n', ' ').strip().lower() for s in examples[text_column][i]])
                 src_ids.append(examples["paper_id"][i])
+                # if examples["paper_id"][i] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
+                #     import pdb;pdb.set_trace()
                 topic_info.append(json.loads(examples["topic_info"][i]))
 
                 valid_targets = [j for j, e in enumerate(examples[summary_column][i]) if len(e.strip())>0]
 
-                topic_sum_info.append([tsumm_info for j, tsumm_info in enumerate(json.loads(examples["topic_summ_info"][i])) if j in valid_targets])
-                targets.extend([e.strip() for j, e in enumerate(examples[summary_column][i]) if j in valid_targets])
+                targets.extend([e.strip().lower() for j, e in enumerate(examples[summary_column][i]) if j in valid_targets])
                 tgt_ids.extend(len(valid_targets) * [examples["paper_id"][i]])
 
         # import pdb;pdb.set_trace()
 
-        inputs = [prefix + inp for inp in inputs]
+        # inputs = [prefix + inp for inp in inputs]
         model_inputs = tokenizer(
             inputs,
             max_length=data_args.max_source_length,
             padding=padding,
             truncation=True,
             doc_ids=src_ids,
-            topic_info_tuple={"topic_info": topic_info, "topic_summ_info": topic_sum_info}
+            topic_info_tuple={"topic_info": topic_info}
          )
         # Setup the tokenizer for targets
         with tokenizer.as_target_tokenizer():
@@ -695,7 +699,6 @@ def main():
 
         # Some simple post-processing
         decoded_preds = postprocess_text(decoded_preds)
-
         # read summaries from file...
         val_dataset = eval_dataset_raw
         val_paper_ids = val_dataset['paper_id']
@@ -711,9 +714,27 @@ def main():
         )
         before_aggregated = {}
 
+        import random
+        # random.seed(888)
+        # randomlist = []
+        # for i in range(0, 5):
+        #     n = random.randint(1, len(decoded_preds_all))
+        #     randomlist.append(n)
+
+        # randomlist = [0, 199, 234, 122, len(preds) - 1]
+        randomlist = [0, 4, 10, 15, len(preds) - 1]
+
         logger.info(f" Calculating element-wise predictions: {len(p_ids)}")
         print()
+        counter = 0
         for p_id, pred, summ in zip(p_ids, decoded_preds_all, decoded_labels_all):
+
+            if counter in randomlist:
+                print()
+                print('Pred: ' + pred.replace("\n", " "))
+                print('Summary: ' + summ.replace("\n", " "))
+
+
             results_f = {"rouge1": 0, "rouge2": 0, "rougeL": 0}
             results_r = {"rouge1": 0, "rouge2":0, "rougeL": 0}
 
@@ -722,10 +743,13 @@ def main():
                 results_f[rouge_metric] = scores[rouge_metric].fmeasure
                 results_r[rouge_metric] = scores[rouge_metric].recall
 
+
             if p_id not in before_aggregated.keys():
                 before_aggregated[p_id] =[{'recall': results_r, 'fmeasure': results_f}]
             else:
                 before_aggregated[p_id].append({'recall': results_r, 'fmeasure': results_f})
+
+            counter += 1
 
         # results = metric_loader.compute(predictions=decoded_preds_all, references=decoded_labels_all, use_stemmer=True, use_aggregator=False)
 

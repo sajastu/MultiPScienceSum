@@ -75,27 +75,26 @@ if __name__ == '__main__':
             'source': [],
             'summary': [],
             'topic_info': [],
-            'topic_summ_info': []
         }
 
         for paper_id, paper_ent in json_ents_dict.items():
             # import pdb;pdb.set_trace()
-            hf_format.append(
-                {
-                    'paper_id': paper_id,
-                    'source': paper_ent['source'],
-                    'summary': paper_ent['summary'],
-                    'topic_info': topic_info_dict[paper_id]['topic_info'],
-                    'topic_summ_infos': topic_info_dict[paper_id]['topic_summ_info']
-                }
-            )
+            # hf_format.append(
+            #     {
+            #         'paper_id': paper_id,
+            #         'source': topic_info_dict[paper_id]['topic_info']['source'],
+            #         'summary': paper_ent['summary'],
+            #         'topic_info': topic_info_dict[paper_id]['topic_info'],
+            #     }
+            # )
 
             hf_df['paper_id'].append(paper_id)
-            hf_df['source'].append(paper_ent['source'])
+            if len(topic_info_dict[paper_id]['section_text']) != len((topic_info_dict[paper_id]['topic_info']['section_stats'])):
+                import pdb;pdb.set_trace()
+            hf_df['source'].append(topic_info_dict[paper_id]['section_text'])
             hf_df['summary'].append(paper_ent['summary'])
             # import pdb;pdb.set_trace()
             hf_df['topic_info'].append(json.dumps(topic_info_dict[paper_id]['topic_info']))
-            hf_df['topic_summ_info'].append(json.dumps(topic_info_dict[paper_id]['topic_summ_info']))
 
         print('Writing HF files...')
 
@@ -112,7 +111,7 @@ if __name__ == '__main__':
         import pandas as pd
         df = pd.DataFrame(hf_df)
         df.to_parquet(f"/disk1/sajad/datasets/sci/mup/hf_format/{se}.parquet")
-
+        # 'SP:4d08cdb2de2044bcb574a425b42963b83fbebfbc'
         # with open(f'/disk1/sajad/datasets/sci/mup/hf_format/{se}.json', mode='w') as fW:
         #     for hf_frmt in hf_format:
         #         json.dump(hf_frmt, fW)

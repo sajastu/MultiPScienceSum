@@ -146,8 +146,10 @@ class CombinedInferenceNetwork(nn.Module):
 
         x_bert = self.adapt_bert(x_bert)
 
-        x = torch.cat((x, x_bert), 1)
-
+        try:
+            x = torch.cat((x, x_bert), 1)
+        except:
+            import pdb;pdb.set_trace()
         if labels is not None:
             x = torch.cat((x, labels), 1)
 

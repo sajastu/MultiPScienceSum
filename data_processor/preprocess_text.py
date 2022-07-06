@@ -1,4 +1,4 @@
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 import string
 from nltk.corpus import stopwords as stop_words
 from gensim.utils import deaccent
@@ -110,7 +110,7 @@ class WhiteSpacePreprocessingStopwords():
         preprocessed_docs_tmp = [' '.join([w for w in doc.split() if len(w) > 0 and w not in self.stopwords])
                                  for doc in preprocessed_docs_tmp]
 
-        vectorizer = CountVectorizer(max_features=self.vocabulary_size, max_df=self.max_df)
+        vectorizer = TfidfVectorizer(max_features=self.vocabulary_size, max_df=self.max_df)
         vectorizer.fit_transform(preprocessed_docs_tmp)
         temp_vocabulary = set(vectorizer.get_feature_names())
 

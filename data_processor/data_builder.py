@@ -6,6 +6,7 @@ import json
 import os
 import random
 import re
+from itertools import chain
 from multiprocessing import Pool
 
 import torch
@@ -206,24 +207,22 @@ class BertData():
 
 
 def topic_info_generate(dialogue):
-    all_counter = Counter()
     # customer_counter = Counter()
     # agent_counter = Counter()
-
-    for sent in dialogue:
-        # role = sent["role"]
-        token_ids = sent["tokenized_id"]
+    all_counter_lst = []
+    for section_ids in dialogue['tokenized_ids']:
+        all_counter = Counter()
+        token_ids = section_ids
         all_counter.update(token_ids)
-        # if role == "客服":
-        #     agent_counter.update(token_ids)
-        # else:
-        #     customer_counter.update(token_ids)
+        all_counter_lst.append(all_counter)
+
     # import pdb;pdb.set_trace()
     # file_counter['all'].update(all_counter.keys())
     # file_counter['customer'].update(customer_counter.keys())
     # file_counter['agent'].update(agent_counter.keys())
     # file_counter['num'] += 1
-    return {"all": all_counter}
+
+    return {"section_stats": all_counter_lst}
 
 
 def topic_summ_info_generate(dialogue, ex_labels):
@@ -242,7 +241,7 @@ def topic_summ_info_generate(dialogue, ex_labels):
     return {"all": all_counter}
 
 
-def format_to_lines(args, corpus_type=None, create_jsons=False):
+def format_to_lines(args, corpus_type=None, create_jsons=True):
     # write json files
     written_insts = 0
 
@@ -382,65 +381,109 @@ def get_sentence_tokens(text):
 
 def _mp_process_instance(params):
     paper_jobj, bert, voc_wrapper = params
-    dialogue_b_data = []
+    sections_tokens = []
+    # should process section by section ... dataset
+    for index, paper_info in enumerate(paper_jobj['sections_txt_tokenized']):
+        # role = paper_info['type']
 
-    for index, section_info in enumerate(paper_jobj["source_sents"]):
-        # role = section_info['type']
+        sections_txt_tokenized = paper_info
+        paper_id = paper_jobj['paper_id']
 
-        b_data = bert.preprocess_src(section_info)
+        section_text, section_tokens = sections_txt_tokenized['text'], sections_txt_tokenized['tokenized']
+        sections_tokens.append((section_text, section_tokens))
 
-        if (b_data is None):
-            continue
+    b_data_dict = {"tokenized_ids": []}
 
-        src_subtoken_idxs, segments_ids, original_txt, src_subtokens = b_data
+    sect_idx = 0
+    hyp_sections = []
+    hyp_sections_txt = []
 
-        b_data_dict = {"index": index, "src_id": src_subtoken_idxs,
-                       "segs": segments_ids, "original_txt": original_txt,
-                       "src_tokens": src_subtokens}
+    while sect_idx < len(sections_tokens):
+        sect_tokens = sections_tokens[sect_idx][1]
+        s_idx = sect_idx
+        # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
+            # if len(hyp_sections_txt) == 1:
+            #     import pdb;
+            #     pdb.set_trace()
+        if len(list(chain.from_iterable(sect_tokens))) < 256 and sect_idx+1 < len(sections_tokens):
+            # check if adding next section increases it to be more than 256
+
+            while sect_idx+1 < len(sections_tokens) and\
+                    len(list(chain.from_iterable(sections_tokens[sect_idx][1]))) + len(list(chain.from_iterable(sections_tokens[sect_idx+1][1]))) < 256:
+                sect_idx += 1
+            sect_idx += 1
+            if sect_idx < len(sections_tokens) and sect_idx-s_idx > 0:
+                combined_sect = [list(chain.from_iterable(s[1])) for s in sections_tokens[s_idx:sect_idx+1]]
+                combined_sect_txt = [s[0] for s in sections_tokens[s_idx:sect_idx+1]]
+                hyp_sections.append((f'{s_idx}-{sect_idx}', list(chain.from_iterable(combined_sect))))
+                hyp_sections_txt.append(" ".join(combined_sect_txt))
+            elif sect_idx == len(sections_tokens) -1 :
+                hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[-1][1]))))
+                combined_sect_txt = sections_tokens[s_idx][0]
+                # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
+
+                hyp_sections_txt.append(combined_sect_txt)
+            else:
+                hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[s_idx][1]))))
+                combined_sect_txt = sections_tokens[s_idx][0]
+                # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
+                # import pdb;pdb.set_trace()
+                hyp_sections_txt.append(combined_sect_txt)
+
+        else:
+            hyp_sections.append((f'{sect_idx}', list(chain.from_iterable(sect_tokens))))
+            combined_sect_txt = sections_tokens[sect_idx][0]
+            # combined_sect_txt = list(chain.from_iterable(combined_sect_txt))
+            hyp_sections_txt.append(combined_sect_txt)
+        sect_idx += 1
+    sect_boundaries = [h[0] for h in hyp_sections]
+    hyp_sections = [h[1] for h in hyp_sections]
+    # for sect_idx, section_tokens in enumerate(sections_tokens):
+    #
+    #     ## make sure section_tokens are at least 256 tokens
+    #     # save section boundaries...
+    #     break_section = False
+    #     hyp_section_tokens = []
+    #
+    #
+    #
+    #     while len(hyp_section_tokens) < 256 and not break_section:
+    #         if len(section_tokens) > 256:
+    #             break_section = True
+    #         else:
+    #             hyp_section_tokens.extend()
+                # add the next sections till 256 is achieved...
 
 
-        # b_data_dict["tokenized_id"] = src_subtoken_idxs[2:]
-        ids = map(lambda x: voc_wrapper.w2i(x), section_info)
+
+    for sec_id, sect_tokens in enumerate(hyp_sections):
+        # ids = map(lambda x: voc_wrapper.w2i(x.lower()), list(chain.from_iterable(sect_tokens)))
+        try:
+            # if len()
+            ids = [voc_wrapper.w2i(x.lower()) for x in sect_tokens]
+        except:
+            print(f'{sec_id}')
+            import pdb;pdb.set_trace()
         tokenized_id = [x for x in ids if x is not None]
 
         for id in tokenized_id:
             if id > voc_wrapper.voc_size():
                 print('id is larger than vocab size...')
 
-        b_data_dict["tokenized_id"] = tokenized_id
+        b_data_dict["tokenized_ids"].append(tokenized_id)
 
-        dialogue_b_data.append(b_data_dict)
 
     dialogue_example = {
-        'paper_id': paper_jobj["paper_id"],
-        'source': dialogue_b_data,
+        'paper_id': paper_id,
+        'section_boundaries': sect_boundaries,
+        "section_text": hyp_sections_txt,
+        # 'source': paper_single_data,
     }
-    topic_info = topic_info_generate(dialogue_b_data)
+
+    topic_info = topic_info_generate(b_data_dict)
     # dialogue_example["paper_jobj"] = dialogue_integrated
     dialogue_example["topic_info"] = topic_info
-    # test & dev data process
-    if "summary" in paper_jobj.keys():
-        # summary is a list of summaries...
-        ext_labelss = []
-        topic_summ_infos = []
-        b_data_dicts = []
-        for sum_idx, summary_text in enumerate(paper_jobj["summary"]):
-            summ_b_data = bert.preprocess_summary(summary_text)
-            subtoken_idxs, original_txt, content_subtokens = summ_b_data
-            b_data_dict = {
-                "summary_token_idx": subtoken_idxs,
-                "original_txt": original_txt,
-                "content_tokens": content_subtokens
-           }
-            ex_labels = greedy_selection(dialogue_b_data, original_txt, 10)
-            topic_summ_info = topic_summ_info_generate(dialogue_b_data, ex_labels)
-            ext_labelss.append(ex_labels)
-            topic_summ_infos.append(topic_summ_info)
-            b_data_dicts.append(b_data_dict)
 
-        dialogue_example["ex_labels"] = ext_labelss
-        dialogue_example["topic_summ_info"] = topic_summ_infos
-        dialogue_example["summary"] = b_data_dicts
 
     return dialogue_example
 
@@ -478,7 +521,9 @@ def _format_to_bert(params, file_counter, voc_wrapper):
 
     for dialogue_example in tqdm(pool.imap_unordered(_mp_process_instance, mp_instances), total=len(mp_instances)):
         dialogue_token_num = 0
-        file_counter['all'].update(dialogue_example['topic_info']['all'].keys())
+
+        file_counter['all'].update(list(chain.from_iterable([k.keys() for k in dialogue_example['topic_info']['section_stats']])))
+
         file_counter['num'] += 1
         datasets.append(dialogue_example)
         src_length_token_num[min(dialogue_token_num // 300, 10)] += 1
@@ -504,11 +549,7 @@ def _format_to_bert(params, file_counter, voc_wrapper):
 
     datasets_dict = {}
     for ins in datasets:
-        datasets_dict[ins['paper_id']] = \
-        {
-            'topic_summ_info': ins["topic_summ_info"],
-            'topic_info': ins["topic_info"],
-        }
+        datasets_dict[ins['paper_id']] = ins
 
     logger.info('Processed instances %d' % len(datasets))
     logger.info('Saving to %s' % save_file)

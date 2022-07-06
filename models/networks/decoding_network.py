@@ -84,7 +84,9 @@ class DecoderNetwork(nn.Module):
         nn.init.xavier_uniform_(self.beta)
 
         self.topic_emb = nn.Parameter(torch.zeros(self.n_components, hidden_sizes[0]))
-
+        # torch.manual_seed(3)
+        # self.topic_emb = nn.Embedding(self.n_components, hidden_sizes[0])
+        nn.init.uniform_(self.topic_emb, -1.0, 1.0)
         # import pdb;pdb.set_trace()
 
         # self.beta_batchnorm = nn.BatchNorm1d(input_size, affine=False)
@@ -99,10 +101,10 @@ class DecoderNetwork(nn.Module):
         eps = torch.randn_like(std)
         return eps.mul(std).add_(mu)
 
-    def forward(self, x, x_bert, labels=None):
+    def forward(self, src_bow, encoded_sect, labels=None):
         """Forward pass."""
         # batch_size x n_components
-        posterior_mu, posterior_log_sigma = self.inf_net(x, x_bert, labels)
+        posterior_mu, posterior_log_sigma = self.inf_net(src_bow, encoded_sect, labels)
         posterior_sigma = torch.exp(posterior_log_sigma)
 
         # generate samples from theta
