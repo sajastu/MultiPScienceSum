@@ -862,10 +862,8 @@ class TGSumDecoder(LEDDecoder):
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
 
             if summ_attn_mask is not None: # batch > 1
-                try:
-                    encoder_attention_mask = ~(summ_attn_mask[:, None, :, None].expand_as(_expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])).bool())
-                except:
-                    import pdb;pdb.set_trace()
+                encoder_attention_mask = ~(summ_attn_mask[:, None, :, None].expand_as(_expand_mask(encoder_attention_mask.repeat(input_shape[0], 1),
+                                                                                                   inputs_embeds.dtype, tgt_len=input_shape[-1])).bool())
                 encoder_attention_mask = encoder_attention_mask.int()
             else:
                 if not self.training:
@@ -1011,7 +1009,7 @@ class TGSumModel(LEDModel):
             #                               embeddings=voc_emb)
 
             self.n_components = 100
-            self.topic_model = DecoderNetwork(input_size=3000, bert_size=1024, infnet='combined', n_components=self.n_components, model_type='prodLDA',
+            self.topic_model = DecoderNetwork(input_size=5001, bert_size=1024, infnet='combined', n_components=self.n_components, model_type='prodLDA',
                                         hidden_sizes=(100, 100), activation='softplus',
                                         dropout=0.2, learn_priors=True, label_size=0)
 
@@ -1050,8 +1048,73 @@ class TGSumModel(LEDModel):
         else:
             p.data.zero_()
 
+    # def _topic_vec_pn(self, batch, topic_info):
+    #
+    #     src, ex_segs = batch.src, batch.ex_segs
+    #     bsz, max_len = len(ex_segs), max(ex_segs)
+    #     topic_vec_all, topic_vec_cust, topic_vec_agent = topic_info
+    #     customer = (topic_vec_cust is not None)
+    #     agent = (topic_vec_agent is not None)
+    #
+    #     if customer:
+    #         cust_mask = torch.split(src[:, 1].eq(self.customer_token), ex_segs)
+    #         cust_mask = pad_sequence(cust_mask, batch_first=True, padding_value=0).float()
+    #     if agent:
+    #         agent_mask = torch.split(src[:, 1].eq(self.agent_token), ex_segs)
+    #         agent_mask = pad_sequence(agent_mask, batch_first=True, padding_value=0).float()
+    #
+    #     if agent and customer:
+    #         if self.args.split_noise:
+    #             topic_vec_agent_summ, topic_vec_agent_noise = topic_vec_agent
+    #             topic_vec_cust_summ, topic_vec_cust_noise = topic_vec_cust
+    #             topic_vec_all_summ, topic_vec_all_noise = topic_vec_all
+    #             topic_vec_summ = torch.cat([topic_vec_agent_summ.unsqueeze(1).expand(bsz, max_len, -1) * agent_mask.unsqueeze(-1),
+    #                                         topic_vec_cust_summ.unsqueeze(1).expand(bsz, max_len, -1) * cust_mask.unsqueeze(-1),
+    #                                         topic_vec_all_summ.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #             topic_vec_noise = torch.cat([topic_vec_agent_noise.unsqueeze(1).expand(bsz, max_len, -1) * agent_mask.unsqueeze(-1),
+    #                                          topic_vec_cust_noise.unsqueeze(1).expand(bsz, max_len, -1) * cust_mask.unsqueeze(-1),
+    #                                          topic_vec_all_noise.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #             topic_vec = (topic_vec_summ, topic_vec_noise)
+    #         else:
+    #             topic_vec = torch.cat([topic_vec_agent.unsqueeze(1).expand(bsz, max_len, -1) * agent_mask.unsqueeze(-1),
+    #                                    topic_vec_cust.unsqueeze(1).expand(bsz, max_len, -1) * cust_mask.unsqueeze(-1),
+    #                                    topic_vec_all.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #     elif agent:
+    #         if self.args.split_noise:
+    #             topic_vec_agent_summ, topic_vec_agent_noise = topic_vec_agent
+    #             topic_vec_all_summ, topic_vec_all_noise = topic_vec_all
+    #             topic_vec_summ = torch.cat([topic_vec_agent_summ.unsqueeze(1).expand(bsz, max_len, -1) * agent_mask.unsqueeze(-1),
+    #                                         topic_vec_all_summ.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #             topic_vec_noise = torch.cat([topic_vec_agent_noise.unsqueeze(1).expand(bsz, max_len, -1) * agent_mask.unsqueeze(-1),
+    #                                          topic_vec_all_noise.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #             topic_vec = (topic_vec_summ, topic_vec_noise)
+    #         else:
+    #             topic_vec = torch.cat([topic_vec_agent.unsqueeze(1).expand(bsz, max_len, -1) * agent_mask.unsqueeze(-1),
+    #                                    topic_vec_all.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #     elif customer:
+    #         if self.args.split_noise:
+    #             topic_vec_cust_summ, topic_vec_cust_noise = topic_vec_cust
+    #             topic_vec_all_summ, topic_vec_all_noise = topic_vec_all
+    #             topic_vec_summ = torch.cat([topic_vec_cust_summ.unsqueeze(1).expand(bsz, max_len, -1) * cust_mask.unsqueeze(-1),
+    #                                         topic_vec_all_summ.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #             topic_vec_noise = torch.cat([topic_vec_cust_noise.unsqueeze(1).expand(bsz, max_len, -1) * cust_mask.unsqueeze(-1),
+    #                                         topic_vec_all_noise.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #             topic_vec = (topic_vec_summ, topic_vec_noise)
+    #         else:
+    #             topic_vec = torch.cat([topic_vec_cust.unsqueeze(1).expand(bsz, max_len, -1) * cust_mask.unsqueeze(-1),
+    #                                    topic_vec_all.unsqueeze(1).expand(bsz, max_len, -1)], -1)
+    #     else:
+    #         if self.args.split_noise:
+    #             topic_vec_all_summ, topic_vec_all_noise = topic_vec_all
+    #             topic_vec_summ = topic_vec_all_summ.unsqueeze(1).expand(bsz, max_len, -1)
+    #             topic_vec_noise = topic_vec_all_noise.unsqueeze(1).expand(bsz, max_len, -1)
+    #             topic_vec = (topic_vec_summ, topic_vec_noise)
+    #         else:
+    #             topic_vec = topic_vec_all.unsqueeze(1).expand(bsz, max_len, -1)
+    #
+    #     return topic_vec
 
-    def _topic_vec_ge(self, topic_vec_all, max_len, vec):
+    def _topic_vec_ge(self, topic_vec_all, max_len, vec, summary_num):
         if self.training:
             bsz = 1
         else:
@@ -1083,10 +1146,9 @@ class TGSumModel(LEDModel):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        src_bow_global=None,
-        src_bow_section=None,
+        source_bow=None,
+        summ_bow=None,
         doc_ids=None,
-        step=None,
         attention_mask: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.LongTensor] = None,
         decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -1110,12 +1172,9 @@ class TGSumModel(LEDModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-
-
         # Using this like Bart, as LED is derived from it. So far
         # No checkpoint on the hub exists that uses that in practice.
         # https://github.com/huggingface/transformers/blob/ac3cb660cad283163f7c73cad511124e845ca388/src/transformers/models/bart/modeling_bart.py#L1153
-
         if decoder_input_ids is None and decoder_inputs_embeds is None:
             # import pdb;
             # pdb.set_trace()
@@ -1126,6 +1185,7 @@ class TGSumModel(LEDModel):
         if encoder_outputs is None:
             global_attention_mask = torch.zeros_like(attention_mask)
             global_attention_mask[:, 0] = 1
+
             encoder_outputs = self.encoder(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -1144,28 +1204,22 @@ class TGSumModel(LEDModel):
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
                 global_attentions=encoder_outputs[3] if len(encoder_outputs) > 3 else None,
             )
-        # if step==1:
-        #     import pdb;pdb.set_trace()
+
         bsz = 1
-        n_summary = 1
-        if decoder_input_ids is not None and self.training:
-            n_summary = len(decoder_input_ids[0])
-            # source_bow_section = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=0).unsqueeze(0)
-        # else:
-        #     n_summary = 1
+        if summ_bow is not None:
+            n_summary = len(summ_bow[0])
+            summ_bow = pad_sequence(summ_bow[0], batch_first=True, padding_value=0).unsqueeze(0)
+        else:
+            n_summary = 1
         # only bsz=1 is supported...
 
         summ_attn_mask = None
         if bsz * n_summary > 1:
-            try:
-                summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
-            except:
-                import pdb;pdb.set_trace()
+            summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
+
         if self.training: # in validation and test we will generate only one summary
-            try:
-                decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
-            except:
-                import pdb;pdb.set_trace()
+            decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
+
         # pad sequence [bsz, n_summary, dim]
         topic_vec_ge = None
         if self.use_topic:
@@ -1173,9 +1227,9 @@ class TGSumModel(LEDModel):
             # self.topic_loss = self.loss_lambda * topic_loss
             # topic_vec_ge = self._topic_vec_ge(topic_info, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global, encoder_outputs[0][:, 0], labels=None) # X_contexual is the source embedding
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(source_bow, encoder_outputs[0][:, 0], labels=None) # X_contexual is the source embedding
 
-            topic_vec_ge = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs[0])
+            topic_vec_ge = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
 
             if self.training:
                 topic_vec_ge = (topic_vec_ge.view(1, attention_mask.size(1), -1))
@@ -1184,6 +1238,7 @@ class TGSumModel(LEDModel):
                 # import pdb;pdb.set_trace()
                 # topic_emb = (topic_emb[:, :, None].view(1, attention_mask.size(1), -1))
 
+        # import pdb;pdb.set_trace()
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
             topic_vec_ge=topic_vec_ge,
@@ -1207,7 +1262,7 @@ class TGSumModel(LEDModel):
 
         return LEDSeq2SeqModelOutput(
             last_hidden_state=decoder_outputs.last_hidden_state,
-            topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
+            topic_info=(source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
@@ -1291,8 +1346,8 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def forward(
             self,
             input_ids=None,
-            src_bow_global=None,
-            src_bow_section=None,
+            src_bow=None,
+            summ_bow=None,
             attention_mask=None,
             decoder_input_ids=None,
             decoder_attention_mask=None,
@@ -1309,7 +1364,6 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             output_hidden_states=None,
             return_dict=None,
             doc_ids=None,
-            step=None,
             split_noise=False,
             global_attention_mask: Optional[torch.FloatTensor] = None,
     ):
@@ -1332,10 +1386,11 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 decoder_input_ids = shift_tokens_right(
                     labels, self.config.pad_token_id, self.config.decoder_start_token_id
                 )
+
         outputs = self.led(
             input_ids,
-            src_bow_global=src_bow_global,
-            src_bow_section=src_bow_section,
+            source_bow=src_bow,
+            summ_bow=summ_bow,
             attention_mask=attention_mask,
             decoder_input_ids=decoder_input_ids,
             global_attention_mask=global_attention_mask,
@@ -1352,7 +1407,6 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             doc_ids=doc_ids,
-            step=step,
         )
 
         # import pdb;
@@ -1408,7 +1462,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             cross_attn_head_mask=None,
             use_cache=None,
             encoder_outputs=None,
-            src_bow_global=None,
+            src_bow=None,
             **kwargs
     ):
         # cut decoder_input_ids if past is used
@@ -1424,7 +1478,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             "head_mask": head_mask,
             "decoder_head_mask": decoder_head_mask,
             "cross_attn_head_mask": cross_attn_head_mask,
-            "src_bow_global": src_bow_global,
+            "src_bow": src_bow,
             "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
         }
 
@@ -1793,3 +1847,188 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             return model, loading_info
 
         return model
+
+    # @classmethod
+    # def _load_pretrained_model(
+    #         cls,
+    #         model,
+    #         state_dict,
+    #         loaded_keys,
+    #         resolved_archive_file,
+    #         pretrained_model_name_or_path,
+    #         ignore_mismatched_sizes=False,
+    #         sharded_metadata=None,
+    #         _fast_init=True,
+    #         low_cpu_mem_usage=False,
+    #         device_map=None,
+    #         offload_folder=None,
+    #         offload_state_dict=False,
+    #         dtype=None,
+    # ):
+    #
+    #     if device_map is not None and "disk" in device_map.values() and offload_folder is None:
+    #         raise ValueError(
+    #             "The current `device_map` had weights offloaded to the disk. Please provide an `offload_folder` for"
+    #             " them."
+    #         )
+    #     # Retrieve missing & unexpected_keys
+    #     model_state_dict = model.state_dict()
+    #     expected_keys = list(model_state_dict.keys())
+    #     prefix = model.base_model_prefix
+    #
+    #     def _fix_key(key):
+    #         if "beta" in key:
+    #             return key.replace("beta", "bias")
+    #         if "gamma" in key:
+    #             return key.replace("gamma", "weight")
+    #         return key
+    #
+    #     original_loaded_keys = loaded_keys
+    #     loaded_keys = [_fix_key(key) for key in loaded_keys]
+    #
+    #     if len(prefix) > 0:
+    #         has_prefix_module = any(s.startswith(prefix) for s in loaded_keys)
+    #         expects_prefix_module = any(s.startswith(prefix) for s in expected_keys)
+    #     else:
+    #         has_prefix_module = False
+    #         expects_prefix_module = False
+    #
+    #     # key re-naming operations are never done on the keys
+    #     # that are loaded, but always on the keys of the newly initialized model
+    #     remove_prefix_from_model = not has_prefix_module and expects_prefix_module
+    #     add_prefix_to_model = has_prefix_module and not expects_prefix_module
+    #
+    #     if remove_prefix_from_model:
+    #         expected_keys_not_prefixed = [s for s in expected_keys if not s.startswith(prefix)]
+    #         expected_keys = [".".join(s.split(".")[1:]) if s.startswith(prefix) else s for s in expected_keys]
+    #     elif add_prefix_to_model:
+    #         expected_keys = [".".join([prefix, s]) for s in expected_keys]
+    #
+    #     import pdb;pdb.set_trace()
+    #     missing_keys = list(set(expected_keys) - set(loaded_keys))
+    #     unexpected_keys = list(set(loaded_keys) - set(expected_keys))
+    #
+    #     # Some models may have keys that are not in the state by design, removing them before needlessly warning
+    #     # the user.
+    #     if cls._keys_to_ignore_on_load_missing is not None:
+    #         for pat in cls._keys_to_ignore_on_load_missing:
+    #             missing_keys = [k for k in missing_keys if re.search(pat, k) is None]
+    #
+    #     if cls._keys_to_ignore_on_load_unexpected is not None:
+    #         for pat in cls._keys_to_ignore_on_load_unexpected:
+    #             unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+    #
+    #     # retrieve weights on meta device and put them back on CPU.
+    #     # retrieve unintialized modules and initialize before maybe overriding that with the pretrained weights.
+    #     if _fast_init:
+    #         uninitialized_modules = model.retrieve_modules_from_names(
+    #             missing_keys, add_prefix=add_prefix_to_model, remove_prefix=remove_prefix_from_model
+    #         )
+    #         for module in uninitialized_modules:
+    #             model._init_weights(module)
+    #
+    #     # Make sure we are able to load base models as well as derived models (with heads)
+    #     # start_prefix = "led"
+    #     model_to_load = model
+    #     # if len(cls.base_model_prefix) > 0 and not hasattr(model, cls.base_model_prefix) and has_prefix_module:
+    #     #     start_prefix = "led"
+    #     # if len(cls.base_model_prefix) > 0 and hasattr(model, cls.base_model_prefix) and not has_prefix_module:
+    #     #     model_to_load = getattr(model, cls.base_model_prefix)
+    #     #     if any(key in expected_keys_not_prefixed for key in loaded_keys):
+    #     #         raise ValueError(
+    #     #             "The state dictionary of the model you are trying to load is corrupted. Are you sure it was "
+    #     #             "properly saved?"
+    #     #         )
+    #     #     if device_map is not None:
+    #     #         device_map = {k.replace(f"{cls.base_model_prefix}.", ""): v for k, v in device_map.items()}
+    #
+    #
+    #
+    #     def _find_mismatched_keys(
+    #             state_dict,
+    #             model_state_dict,
+    #             loaded_keys,
+    #             add_prefix_to_model,
+    #             remove_prefix_from_model,
+    #             ignore_mismatched_sizes,
+    #     ):
+    #         mismatched_keys = []
+    #         if ignore_mismatched_sizes:
+    #             for checkpoint_key in loaded_keys:
+    #                 model_key = checkpoint_key
+    #                 if remove_prefix_from_model:
+    #                     # The model key starts with `prefix` but `checkpoint_key` doesn't so we add it.
+    #                     model_key = f"{prefix}.{checkpoint_key}"
+    #                 elif add_prefix_to_model:
+    #                     # The model key doesn't start with `prefix` but `checkpoint_key` does so we remove it.
+    #                     model_key = ".".join(checkpoint_key.split(".")[1:])
+    #
+    #                 if (
+    #                         model_key in model_state_dict
+    #                         and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape
+    #                 ):
+    #                     mismatched_keys.append(
+    #                         (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+    #                     )
+    #                     del state_dict[checkpoint_key]
+    #         return mismatched_keys
+    #
+    #     mismatched_keys = _find_mismatched_keys(
+    #         state_dict,
+    #         model_state_dict,
+    #         original_loaded_keys,
+    #         add_prefix_to_model,
+    #         remove_prefix_from_model,
+    #         ignore_mismatched_sizes,
+    #     )
+    #     error_msgs = _load_state_dict_into_model(model_to_load, state_dict, start_prefix)
+    #     import pdb;pdb.set_trace()
+    #
+    #     if len(error_msgs) > 0:
+    #         error_msg = "\n\t".join(error_msgs)
+    #         if "size mismatch" in error_msg:
+    #             error_msg += (
+    #                 "\n\tYou may consider adding `ignore_mismatched_sizes=True` in the model `from_pretrained` method."
+    #             )
+    #         raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msg}")
+    #
+    #     if len(unexpected_keys) > 0:
+    #         logger.warning(
+    #             f"Some weights of the model checkpoint at {pretrained_model_name_or_path} were not used when"
+    #             f" initializing {model.__class__.__name__}: {unexpected_keys}\n- This IS expected if you are"
+    #             f" initializing {model.__class__.__name__} from the checkpoint of a model trained on another task or"
+    #             " with another architecture (e.g. initializing a BertForSequenceClassification model from a"
+    #             " BertForPreTraining model).\n- This IS NOT expected if you are initializing"
+    #             f" {model.__class__.__name__} from the checkpoint of a model that you expect to be exactly identical"
+    #             " (initializing a BertForSequenceClassification model from a BertForSequenceClassification model)."
+    #         )
+    #     else:
+    #         logger.info(f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
+    #     if len(missing_keys) > 0:
+    #         logger.warning(
+    #             f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
+    #             f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
+    #             " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
+    #         )
+    #     elif len(mismatched_keys) == 0:
+    #         logger.info(
+    #             f"All the weights of {model.__class__.__name__} were initialized from the model checkpoint at"
+    #             f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the checkpoint"
+    #             f" was trained on, you can already use {model.__class__.__name__} for predictions without further"
+    #             " training."
+    #         )
+    #     if len(mismatched_keys) > 0:
+    #         mismatched_warning = "\n".join(
+    #             [
+    #                 f"- {key}: found shape {shape1} in the checkpoint and {shape2} in the model instantiated"
+    #                 for key, shape1, shape2 in mismatched_keys
+    #             ]
+    #         )
+    #         logger.warning(
+    #             f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
+    #             f" {pretrained_model_name_or_path} and are newly initialized because the shapes did not"
+    #             f" match:\n{mismatched_warning}\nYou should probably TRAIN this model on a down-stream task to be able"
+    #             " to use it for predictions and inference."
+    #         )
+    #
+    #     return model, missing_keys, unexpected_keys, mismatched_keys, error_msgs

@@ -73,7 +73,7 @@ CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --predict_with_generate \
     --max_grad_norm 1 \
     --lr_scheduler_type linear \
-    --eval_steps 250 --save_steps 4150 \
+    --eval_steps 150 --save_steps 4150 \
     --train_file $DS_DIR/train.parquet \
     --validation_file $DS_DIR/val.parquet \
     --do_train \

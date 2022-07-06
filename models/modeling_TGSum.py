@@ -1160,7 +1160,7 @@ class TGSumModel(LEDModel):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        source_bow=None,
+        src_bow_global=None,
         summ_bow=None,
         doc_ids=None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -1241,7 +1241,7 @@ class TGSumModel(LEDModel):
             # self.topic_loss = self.loss_lambda * topic_loss
             # topic_vec_ge = self._topic_vec_ge(topic_info, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(source_bow, encoder_outputs[0][:, 0], labels=None) # X_contexual is the source embedding
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global, encoder_outputs[0][:, 0], labels=None) # X_contexual is the source embedding
 
             topic_vec_ge = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
 
@@ -1276,7 +1276,7 @@ class TGSumModel(LEDModel):
 
         return LEDSeq2SeqModelOutput(
             last_hidden_state=decoder_outputs.last_hidden_state,
-            topic_info=(source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
+            topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
@@ -1360,7 +1360,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def forward(
             self,
             input_ids=None,
-            src_bow=None,
+            src_bow_global=None,
             summ_bow=None,
             attention_mask=None,
             decoder_input_ids=None,
@@ -1404,7 +1404,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
         outputs = self.led(
             input_ids,
-            source_bow=src_bow,
+            src_bow_global=src_bow_global,
             summ_bow=summ_bow,
             attention_mask=attention_mask,
             decoder_input_ids=decoder_input_ids,
@@ -1477,7 +1477,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             cross_attn_head_mask=None,
             use_cache=None,
             encoder_outputs=None,
-            src_bow=None,
+            src_bow_global=None,
             **kwargs
     ):
         # cut decoder_input_ids if past is used
@@ -1493,7 +1493,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             "head_mask": head_mask,
             "decoder_head_mask": decoder_head_mask,
             "cross_attn_head_mask": cross_attn_head_mask,
-            "src_bow": src_bow,
+            "src_bow_global": src_bow_global,
             "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
         }
 

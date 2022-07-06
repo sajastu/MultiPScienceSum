@@ -74,27 +74,20 @@ if __name__ == '__main__':
             'paper_id': [],
             'source': [],
             'summary': [],
-            'topic_info': [],
+            'topic_info_global': [],
+            'topic_info_section': [],
         }
 
         for paper_id, paper_ent in json_ents_dict.items():
-            # import pdb;pdb.set_trace()
-            # hf_format.append(
-            #     {
-            #         'paper_id': paper_id,
-            #         'source': topic_info_dict[paper_id]['topic_info']['source'],
-            #         'summary': paper_ent['summary'],
-            #         'topic_info': topic_info_dict[paper_id]['topic_info'],
-            #     }
-            # )
 
             hf_df['paper_id'].append(paper_id)
-            if len(topic_info_dict[paper_id]['section_text']) != len((topic_info_dict[paper_id]['topic_info']['section_stats'])):
+            if len(topic_info_dict[paper_id]['section_text']) != len((topic_info_dict[paper_id]['topic_info_section'])):
                 import pdb;pdb.set_trace()
             hf_df['source'].append(topic_info_dict[paper_id]['section_text'])
             hf_df['summary'].append(paper_ent['summary'])
             # import pdb;pdb.set_trace()
-            hf_df['topic_info'].append(json.dumps(topic_info_dict[paper_id]['topic_info']))
+            hf_df['topic_info_section'].append(json.dumps(topic_info_dict[paper_id]['topic_info_section']))
+            hf_df['topic_info_global'].append(json.dumps(topic_info_dict[paper_id]['topic_info_global']))
 
         print('Writing HF files...')
 
@@ -111,23 +104,3 @@ if __name__ == '__main__':
         import pandas as pd
         df = pd.DataFrame(hf_df)
         df.to_parquet(f"/disk1/sajad/datasets/sci/mup/hf_format/{se}.parquet")
-        # 'SP:4d08cdb2de2044bcb574a425b42963b83fbebfbc'
-        # with open(f'/disk1/sajad/datasets/sci/mup/hf_format/{se}.json', mode='w') as fW:
-        #     for hf_frmt in hf_format:
-        #         json.dump(hf_frmt, fW)
-        #         fW.write('\n')
-        #
-        # print('Tokenizing sentences...')
-
-        # for hf_frmt in hf_format:
-        # pool = Pool(15)
-        # tokenized_hfs = []
-        # for ret in tqdm(pool.imap_unordered(_parse_paper, hf_format), total=len(hf_format)):
-        #     tokenized_hfs.append(ret)
-
-
-
-        # print('Writing to single files...')
-        # for g in tokenized_hfs:
-        #     with open(f'/disk1/sajad/datasets/sci/mup/single_files/{se}/{g["paper_id"]}.json', mode="w") as fW:
-        #         json.dump(g, fW)

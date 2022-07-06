@@ -206,15 +206,18 @@ class BertData():
         return {"src_id": src_ids, "segs": segments_ids}
 
 
-def topic_info_generate(dialogue):
-    # customer_counter = Counter()
-    # agent_counter = Counter()
-    all_counter_lst = []
+def topic_info_generate(dialogue, section=True):
+    all_counter_global = Counter()
+    global_ids = chain.from_iterable(dialogue['tokenized_ids'])
+    all_counter_global.update(global_ids)
+
+    all_counter_lst_section = []
+
     for section_ids in dialogue['tokenized_ids']:
         all_counter = Counter()
         token_ids = section_ids
         all_counter.update(token_ids)
-        all_counter_lst.append(all_counter)
+        all_counter_lst_section.append(all_counter)
 
     # import pdb;pdb.set_trace()
     # file_counter['all'].update(all_counter.keys())
@@ -222,7 +225,7 @@ def topic_info_generate(dialogue):
     # file_counter['agent'].update(agent_counter.keys())
     # file_counter['num'] += 1
 
-    return {"section_stats": all_counter_lst}
+    return all_counter_lst_section, all_counter_global
 
 
 def topic_summ_info_generate(dialogue, ex_labels):
@@ -300,68 +303,25 @@ def format_to_bert(args, corpus_type=None):
         "total_tgt_length": 0
     }
 
-    # papers_json_lst_global = []
-    # papers_json_lst = []
-    # for idx, d in enumerate(a_lst):
-    #     papers_json_lst.append(d)
-    #     if idx % 1000 == 0:
-    #         papers_json_lst_global.append(papers_json_lst)
-    #         papers_json_lst = []
-    #
-    # if len(papers_json_lst) > 0:
-    #     papers_json_lst_global.append(papers_json_lst)
-
-    # if not os.path.exists("/disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt"):
-    file_counter = {"all": Counter(), "num": 0, "voc_size": 0}
+    file_counter_global = {"all": Counter(), "num": 0, "voc_size": 0}
+    file_counter_section = {"all": Counter(), "num": 0, "voc_size": 0}
     voc_wrapper = VocabWrapper(args.emb_mode)
     voc_wrapper.load_emb(args.emb_path)
-    file_counter['voc_size'] = voc_wrapper.voc_size()
-    # else:
-        # file_counter = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt")
-
+    file_counter_global['voc_size'] = voc_wrapper.voc_size()
+    file_counter_section['voc_size'] = voc_wrapper.voc_size()
 
     for d in a_lst:
-        statistic, file_counter = _format_to_bert(d, file_counter, voc_wrapper)
-        if statistic is None:
-            continue
-        total_statistic["instances"] += statistic["instances"]
-        # total_statistic["total_turns"] += statistic["total_turns"]
-        # total_statistic["processed_turns"] += statistic["processed_turns"]
-        # total_statistic["max_turns"] = max(total_statistic["max_turns"], statistic["max_turns"])
-        total_statistic["exceed_length_num"] += statistic["exceed_length_num"]
-        # total_statistic["exceed_turns_num"] += statistic["exceed_turns_num"]
-        total_statistic["total_src_length"] += statistic["total_src_length"]
-        total_statistic["total_tgt_length"] += statistic["total_tgt_length"]
-        # for idx in range(len(total_statistic["turns_num"])):
-        #     total_statistic["turns_num"][idx] += statistic["turns_num"][idx]
-        for idx in range(len(total_statistic["src_sent_length_num"])):
-            total_statistic["src_sent_length_num"][idx] += statistic["src_sent_length_num"][idx]
-        for idx in range(len(total_statistic["src_token_length_num"])):
-            total_statistic["src_token_length_num"][idx] += statistic["src_token_length_num"][idx]
+        file_counter_global, file_counter_section = _format_to_bert(d, file_counter_global, file_counter_section, voc_wrapper)
 
     # save file counter
-    save_file = pjoin(args.save_path, 'idf_info.pt')
-    logger.info('Saving file counter to %s' % save_file)
-    torch.save(file_counter, save_file)
+    save_file = pjoin(args.save_path, 'idf_info_global.pt')
+    logger.info('Saving global file counter to %s' % save_file)
+    torch.save(file_counter_global, save_file)
 
-    if total_statistic["instances"] > 0:
-        logger.info("Total examples: %d" % total_statistic["instances"])
-        # logger.info("Average sentence number per dialogue: %f" % (total_statistic["total_turns"] / total_statistic["instances"]))
-        # logger.info("Processed average sentence number per dialogue: %f" % (total_statistic["processed_turns"] / total_statistic["instances"]))
-        # logger.info("Total sentences: %d" % total_statistic["total_turns"])
-        # logger.info("Processed sentences: %d" % total_statistic["processed_turns"])
-        # logger.info("Exceeded max sentence number dialogues: %d" % total_statistic["exceed_turns_num"])
-        # logger.info("Max dialogue sentences: %d" % total_statistic["max_turns"])
-        # for idx, num in enumerate(total_statistic["turns_num"]):
-        #     logger.info("Dialogue sentences %d ~ %d: %d, %.2f%%" % (idx * 20, (idx+1) * 20, num, (num / total_statistic["instances"])))
-        logger.info("Exceed length sentences number: %d" % total_statistic["exceed_length_num"])
-        # logger.info("Average src sentence length: %f" % (total_statistic["total_src_length"] / total_statistic["total_turns"]))
-        # for idx, num in enumerate(total_statistic["src_sent_length_num"]):
-        #     logger.info("Sent length %d ~ %d: %d, %.2f%%" % (idx * 10, (idx+1) * 10, num, (num / total_statistic["total_turns"])))
-        logger.info("Average src token length: %f" % (total_statistic["total_src_length"] / total_statistic["instances"]))
-        for idx, num in enumerate(total_statistic["src_token_length_num"]):
-            logger.info("token num %d ~ %d: %d, %.2f%%" % (idx * 300, (idx+1) * 300, num, (num / total_statistic["instances"])))
-        logger.info("Average tgt length: %f" % (total_statistic["total_tgt_length"] / total_statistic["instances"]))
+    save_file = pjoin(args.save_path, 'idf_info_section.pt')
+    logger.info('Saving section file counter to %s' % save_file)
+    torch.save(file_counter_section, save_file)
+
 
 
 import spacy
@@ -380,16 +340,15 @@ def get_sentence_tokens(text):
 
 
 def _mp_process_instance(params):
-    paper_jobj, bert, voc_wrapper = params
+    paper_jobj, voc_wrapper = params
     sections_tokens = []
     # should process section by section ... dataset
     for index, paper_info in enumerate(paper_jobj['sections_txt_tokenized']):
-        # role = paper_info['type']
-
         sections_txt_tokenized = paper_info
         paper_id = paper_jobj['paper_id']
-
-        section_text, section_tokens = sections_txt_tokenized['text'], sections_txt_tokenized['tokenized']
+        section_text, section_tokens = sections_txt_tokenized['text'].replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '') \
+                              .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
+                              .replace('\n', ' ').strip(), sections_txt_tokenized['tokenized']
         sections_tokens.append((section_text, section_tokens))
 
     b_data_dict = {"tokenized_ids": []}
@@ -438,32 +397,11 @@ def _mp_process_instance(params):
         sect_idx += 1
     sect_boundaries = [h[0] for h in hyp_sections]
     hyp_sections = [h[1] for h in hyp_sections]
-    # for sect_idx, section_tokens in enumerate(sections_tokens):
-    #
-    #     ## make sure section_tokens are at least 256 tokens
-    #     # save section boundaries...
-    #     break_section = False
-    #     hyp_section_tokens = []
-    #
-    #
-    #
-    #     while len(hyp_section_tokens) < 256 and not break_section:
-    #         if len(section_tokens) > 256:
-    #             break_section = True
-    #         else:
-    #             hyp_section_tokens.extend()
-                # add the next sections till 256 is achieved...
 
 
 
     for sec_id, sect_tokens in enumerate(hyp_sections):
-        # ids = map(lambda x: voc_wrapper.w2i(x.lower()), list(chain.from_iterable(sect_tokens)))
-        try:
-            # if len()
-            ids = [voc_wrapper.w2i(x.lower()) for x in sect_tokens]
-        except:
-            print(f'{sec_id}')
-            import pdb;pdb.set_trace()
+        ids = [voc_wrapper.w2i(x.lower()) for x in sect_tokens]
         tokenized_id = [x for x in ids if x is not None]
 
         for id in tokenized_id:
@@ -477,42 +415,33 @@ def _mp_process_instance(params):
         'paper_id': paper_id,
         'section_boundaries': sect_boundaries,
         "section_text": hyp_sections_txt,
-        # 'source': paper_single_data,
     }
 
-    topic_info = topic_info_generate(b_data_dict)
-    # dialogue_example["paper_jobj"] = dialogue_integrated
-    dialogue_example["topic_info"] = topic_info
+    topic_info_section, topic_info_global = topic_info_generate(b_data_dict)
+
+    dialogue_example["topic_info_section"] = topic_info_section
+    dialogue_example["topic_info_global"] = topic_info_global
 
 
     return dialogue_example
 
 
-def _format_to_bert(params, file_counter, voc_wrapper):
+def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapper):
 
     _, json_file, args, save_file = params
 
     logger.info('Processing %s' % json_file)
     jobs = json.load(open(json_file))
     datasets = []
-    exceed_length_num = 0
-    exceed_turns_num = 0
-    total_src_length = 0.
-    total_tgt_length = 0.
-    src_length_sent_num = [0] * 11
-    src_length_token_num = [0] * 11
 
     count = 0
 
     print(f'Processing {json_file}...')
 
     mp_instances = []
-    bert = BertData(args)
-
-    # jobs = jobs[:1000]
 
     for paper_jobj in tqdm(jobs, total=len(jobs), desc=f'Processing...'):
-        mp_instances.append((paper_jobj, bert, voc_wrapper))
+        mp_instances.append((paper_jobj, voc_wrapper))
 
     pool = Pool(16)
 
@@ -520,32 +449,14 @@ def _format_to_bert(params, file_counter, voc_wrapper):
     #     _mp_process_instance(mi)
 
     for dialogue_example in tqdm(pool.imap_unordered(_mp_process_instance, mp_instances), total=len(mp_instances)):
-        dialogue_token_num = 0
-
-        file_counter['all'].update(list(chain.from_iterable([k.keys() for k in dialogue_example['topic_info']['section_stats']])))
-
-        file_counter['num'] += 1
+        file_counter_global['all'].update(dialogue_example['topic_info_global'].keys())
+        file_counter_section['all'].update(list(chain.from_iterable([k.keys() for k in dialogue_example['topic_info_section']])))
+        file_counter_global['num'] += 1
+        file_counter_section['num'] += len(dialogue_example['topic_info_section'])
         datasets.append(dialogue_example)
-        src_length_token_num[min(dialogue_token_num // 300, 10)] += 1
         count += 1
         if count % 50 == 0:
             print(count)
-    # import pdb;pdb.set_trace()
-    statistic = {
-        "instances": len(datasets),
-        # "total_turns": dialogue_turns,
-        # "processed_turns": processed_turns,
-        # "max_turns": max_turns,
-        # "turns_num": turns_num,
-        "exceed_length_num": exceed_length_num,
-        "exceed_turns_num": exceed_turns_num,
-        "total_src_length": total_src_length,
-        "src_sent_length_num": src_length_sent_num,
-        "src_token_length_num": src_length_token_num,
-        "total_tgt_length": total_tgt_length
-    }
-
-    ## ASSERTION
 
     datasets_dict = {}
     for ins in datasets:
@@ -557,4 +468,4 @@ def _format_to_bert(params, file_counter, voc_wrapper):
 
     datasets = []
     gc.collect()
-    return statistic, file_counter
+    return file_counter_global, file_counter_section

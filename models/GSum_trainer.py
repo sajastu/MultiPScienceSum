@@ -75,6 +75,9 @@ class TGSumTrainer(Seq2SeqTrainer):
             labels = inputs.pop("labels")
         else:
             labels = None
+
+        inputs['step'] = self.state.global_step
+
         outputs = model(**inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
@@ -497,7 +500,7 @@ class TGSumTrainer(Seq2SeqTrainer):
             self.log(logs)
 
         metrics = None
-        if self.control.should_evaluate or self.state.global_step == 1000:
+        if self.control.should_evaluate:
             metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
             self._report_to_hp_search(trial, epoch, metrics)
 
@@ -520,6 +523,7 @@ class TGSumTrainer(Seq2SeqTrainer):
             `torch.Tensor`: The tensor with training loss on this batch.
         """
         model.train()
+
         inputs = self._prepare_inputs(inputs)
 
         with self.compute_loss_context_manager():
@@ -531,7 +535,7 @@ class TGSumTrainer(Seq2SeqTrainer):
         # pdb.set_trace()
 
         lm_loss = loss
-        # loss = (loss) + (0.01 * topic_loss)
+        loss = loss + (0.1 * topic_loss)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -545,15 +549,15 @@ class TGSumTrainer(Seq2SeqTrainer):
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         else:
+            # if self.state.global_step==398 or :
+            #     import pdb;pdb.set_trace()
             loss.backward()
 
         return loss.detach(), topic_loss.detach(), lm_loss.detach()
 
-
     def create_optimizer(self):
         """
         Setup the optimizer.
-
         We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
         Trainer's init through `optimizers`, or subclass and override this method in a subclass.
         """
@@ -613,26 +617,21 @@ class TGSumTrainer(Seq2SeqTrainer):
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Perform an evaluation step on `model` using `inputs`.
-
         Subclass and override to inject custom behavior.
-
         Args:
             model (`nn.Module`):
                 The model to evaluate.
             inputs (`Dict[str, Union[torch.Tensor, Any]]`):
                 The inputs and targets of the model.
-
                 The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
                 argument `labels`. Check your model's documentation for all accepted arguments.
             prediction_loss_only (`bool`):
                 Whether or not to return the loss only.
-
         Return:
             Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
             labels (each being optional).
         """
 
-        section_idx = ((inputs['input_ids'][0] == 0).nonzero(as_tuple=True)[0])
         if not self.args.predict_with_generate or prediction_loss_only:
             return super().prediction_step(
                 model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys
@@ -658,12 +657,10 @@ class TGSumTrainer(Seq2SeqTrainer):
             generation_inputs = inputs[self.model.encoder.main_input_name]
         else:
             generation_inputs = inputs[self.model.main_input_name]
-        # import pdb;pdb.set_trace()
         generated_tokens = self.model.generate(
             generation_inputs,
-            src_bow=inputs['src_bow'],
+            src_bow_global=inputs['src_bow_global'],
             doc_ids=inputs['doc_ids'],
-            section_token_index=section_idx,
             **gen_kwargs,
         )
         # in case the batch is shorter than max length, the output should be padded
@@ -710,7 +707,6 @@ class TGSumTrainer(Seq2SeqTrainer):
     ) -> EvalLoopOutput:
             """
             Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
-
             Works both with or without labels.
             """
             args = self.args
@@ -882,7 +878,6 @@ class TGSumTrainer(Seq2SeqTrainer):
 class EvalPrediction(NamedTuple):
     """
     Evaluation output (always contains labels), to be used to compute metrics.
-
     Parameters:
         predictions (`np.ndarray`): Predictions of the model.
         label_ids (`np.ndarray`): Targets to be matched.

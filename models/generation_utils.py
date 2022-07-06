@@ -22,27 +22,15 @@ class GenerationMixin(GenerationMixin):
 
 
     def _prepare_encoder_decoder_kwargs_for_generation(
-        self, inputs_tensor: torch.Tensor, src_bow=None, section_token_index=None, model_kwargs=None, model_input_name: Optional[str] = None
+        self, inputs_tensor: torch.Tensor, model_kwargs, model_input_name: Optional[str] = None
     ) -> Dict[str, Any]:
         # 1. get encoder
         encoder = self.get_encoder()
-        encoder_section = self.get_section_encoder()
-        topic_model = self.get_topic_model()
 
         # 2. prepare encoder args and encoder kwargs from model kwargs
-        irrelevant_prefix = ["decoder_", "cross_attn", "use_cache"]
-        encoder_kwargs = {
-            argument: value
-            for argument, value in model_kwargs.items()
-            if not any(argument.startswith(p) for p in irrelevant_prefix)
-        }
+        irrelevant_prefix = ["decoder_", "cross_attn", "use_cache", "src_bow_global", "section_token_index"]
 
-        topic_model_kwargs = {
-            argument: value
-            for argument, value in model_kwargs.items()
-            if not any(argument.startswith(p) for p in irrelevant_prefix)
-        }
-        topic_model_kwargs = {
+        encoder_kwargs = {
             argument: value
             for argument, value in model_kwargs.items()
             if not any(argument.startswith(p) for p in irrelevant_prefix)
@@ -52,12 +40,7 @@ class GenerationMixin(GenerationMixin):
         model_input_name = model_input_name if model_input_name is not None else self.main_input_name
         encoder_kwargs["return_dict"] = True
         encoder_kwargs[model_input_name] = inputs_tensor
-
         model_kwargs["encoder_outputs"]: ModelOutput = encoder(**encoder_kwargs)
-        section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1, section_token_index.cuda()).cuda()
-        model_kwargs["topic_model_outputs"] = topic_model(src_bow.squeeze(0), section_pre_encodings.squeeze(0))
-        gen_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
-        model_kwargs["encoder_outputs_section"] = encoder_section(section_pre_encodings, gen_mask)
 
         return model_kwargs
 
@@ -75,9 +58,9 @@ class GenerationMixin(GenerationMixin):
         )
         input_ids = input_ids.index_select(0, expanded_return_idx)
 
-        if "src_bow" in model_kwargs:
-            src_bow = model_kwargs["src_bow"]
-            model_kwargs["src_bow"] = src_bow.index_select(0, expanded_return_idx)
+        if "src_bow_global" in model_kwargs:
+            src_bow = model_kwargs["src_bow_global"]
+            model_kwargs["src_bow_global"] = src_bow.index_select(0, expanded_return_idx)
 
         if "token_type_ids" in model_kwargs:
             token_type_ids = model_kwargs["token_type_ids"]
@@ -98,9 +81,8 @@ class GenerationMixin(GenerationMixin):
     def generate(
             self,
             inputs: Optional[torch.Tensor] = None,
-            src_bow=None,
+            src_bow_global=None,
             doc_ids=None,
-            section_token_index=None,
             max_length: Optional[int] = None,
             min_length: Optional[int] = None,
             do_sample: Optional[bool] = None,
@@ -116,7 +98,7 @@ class GenerationMixin(GenerationMixin):
             pad_token_id: Optional[int] = None,
             eos_token_id: Optional[int] = None,
             length_penalty: Optional[float] = None,
-            no_repeat_ngram_size: Optional[int] = 3,
+            no_repeat_ngram_size: Optional[int] = None,
             encoder_no_repeat_ngram_size: Optional[int] = None,
             num_return_sequences: Optional[int] = None,
             max_time: Optional[float] = None,
@@ -203,10 +185,8 @@ class GenerationMixin(GenerationMixin):
         if self.config.is_encoder_decoder and "encoder_outputs" not in model_kwargs:
             # if model is encoder decoder encoder_outputs are created
             # and added to `model_kwargs`
-
-
             model_kwargs = self._prepare_encoder_decoder_kwargs_for_generation(
-                inputs_tensor, src_bow, section_token_index, model_kwargs, model_input_name
+                inputs_tensor, model_kwargs, model_input_name
             )
 
         # 4. Prepare `input_ids` which will be used for auto-regressive generation
@@ -235,8 +215,8 @@ class GenerationMixin(GenerationMixin):
             )
         # default to config if still None
         max_length = max_length if max_length is not None else self.config.max_length
-        max_length = 256
-        min_length = 150
+        # max_length = 500
+        # min_length = 400
 
         if input_ids.shape[-1] >= max_length:
             input_ids_string = "decoder_input_ids" if self.config.is_encoder_decoder else "input_ids"
@@ -246,7 +226,7 @@ class GenerationMixin(GenerationMixin):
             )
 
         # 6. determine generation mode
-        num_beams = 2
+        num_beams = 3
         is_constraint_gen_mode = constraints is not None
         is_greedy_gen_mode = (num_beams == 1) and (num_beam_groups == 1) and do_sample is False and constraints is None
         is_sample_gen_mode = (num_beams == 1) and (num_beam_groups == 1) and do_sample is True and constraints is None
@@ -360,7 +340,7 @@ class GenerationMixin(GenerationMixin):
             )
 
             # 11. interleave input_ids with `num_beams` additional sequences per batch
-            model_kwargs["src_bow"] = src_bow
+            model_kwargs["src_bow_global"] = src_bow_global
             input_ids, model_kwargs = self._expand_inputs_for_generation(
                 input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
             )
@@ -369,7 +349,6 @@ class GenerationMixin(GenerationMixin):
             return self.beam_search(
                 input_ids,
                 beam_scorer,
-                section_token_index=section_token_index,
                 logits_processor=logits_processor,
                 stopping_criteria=stopping_criteria,
                 pad_token_id=pad_token_id,
@@ -517,7 +496,6 @@ class GenerationMixin(GenerationMixin):
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = True,
         synced_gpus: Optional[bool] = False,
-        section_token_index= None,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
 
@@ -594,7 +572,6 @@ class GenerationMixin(GenerationMixin):
             # model_inputs['src_bow'] = src_bow
             outputs = self(
                 **model_inputs,
-                section_token_index=section_token_index,
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
@@ -760,5 +737,3 @@ class GenerationMixin(GenerationMixin):
             # import pdb;
             # pdb.set_trace()
             return sequence_outputs["sequences"]
-
-

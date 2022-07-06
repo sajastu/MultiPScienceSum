@@ -169,7 +169,7 @@ class DataTrainingArguments:
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
     preprocessing_num_workers: Optional[int] = field(
-        default=1,
+        default=4,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     max_source_length: Optional[int] = field(
@@ -538,7 +538,7 @@ def main():
 
     def preprocess_function(examples):
         # remove pairs where at least one record is None
-        inputs, targets, src_ids, tgt_ids, topic_info, topic_sum_info = [], [], [], [], [], []
+        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section = [], [], [], [], [], []
         for i in range(len(examples[text_column])):
             if examples[text_column][i] is not None and examples[summary_column][i] is not None:
                 inputs.append([s.replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '')
@@ -547,7 +547,8 @@ def main():
                 src_ids.append(examples["paper_id"][i])
                 # if examples["paper_id"][i] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
                 #     import pdb;pdb.set_trace()
-                topic_info.append(json.loads(examples["topic_info"][i]))
+                topic_info_global.append(json.loads(examples["topic_info_global"][i]))
+                topic_info_section.append(json.loads(examples["topic_info_section"][i]))
 
                 valid_targets = [j for j, e in enumerate(examples[summary_column][i]) if len(e.strip())>0]
 
@@ -555,15 +556,14 @@ def main():
                 tgt_ids.extend(len(valid_targets) * [examples["paper_id"][i]])
 
         # import pdb;pdb.set_trace()
-
-        # inputs = [prefix + inp for inp in inputs]
+        topic_info_tuple = {"topic_info_global": topic_info_global, "topic_info_section": topic_info_section}
         model_inputs = tokenizer(
             inputs,
             max_length=data_args.max_source_length,
             padding=padding,
             truncation=True,
             doc_ids=src_ids,
-            topic_info_tuple={"topic_info": topic_info}
+            topic_info_tuple=topic_info_tuple
          )
         # Setup the tokenizer for targets
         with tokenizer.as_target_tokenizer():

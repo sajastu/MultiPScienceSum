@@ -156,50 +156,55 @@ class TGSumTokenizer(LEDTokenizer):
 
     # topic_info = torch.load
     def set_global_idf(self):
-        self.idf_info = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt")
+        self.idf_info_global = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info_global.pt")
+        self.idf_info_section = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info_section.pt")
 
-    def generate_src_bow(self, topic_src_infos, input_ids, doc_id, ids):
-        all_bows = []
+    def generate_src_bow(self, topic_src_info_global, topic_src_info_sections, input_ids, doc_id, ids):
+        all_bows_section = []
         truncate_section = input_ids.count(0)
-        vocab_size = self.idf_info["voc_size"]
-        all_file_counter = self.idf_info["all"]
-        file_num = self.idf_info["num"]
-        # import pdb;pdb.set_trace()
+        vocab_size = self.idf_info_global["voc_size"]
+        all_file_counter_section = self.idf_info_section["all"]
+        all_file_counter_global = self.idf_info_global["all"]
+        file_num_global = self.idf_info_global["num"]
+        file_num_section = self.idf_info_section["num"]
 
+        ### creating section bow
 
-        for topic_src_info in topic_src_infos["section_stats"][:truncate_section]:
+        for topic_src_info_section in topic_src_info_sections[:truncate_section]:
             all_bow = torch.zeros([vocab_size], dtype=torch.float)
-            all_counter = topic_src_info
-            ## all counter is a list of tokens for sections...
+            all_counter = topic_src_info_section
             all_counter_sum = sum(all_counter.values())
 
             for key, value in all_counter.items():
                 all_tf = value / all_counter_sum
-                all_file_count = all_file_counter[int(key)]
-                # if self.args.use_idf:
-                # import pdb;pdb.set_trace()
-                all_idf = math.log(file_num / (all_file_count + 1.))
-                # else:
-                #     all_idf = 0. if all_file_count > self.args.max_word_count or \
-                #         all_file_count < self.args.min_word_count else 1.
-
+                all_file_count = all_file_counter_section[int(key)]
+                all_idf = math.log(file_num_section / (all_file_count + 1.))
                 all_bow[int(key)] = all_tf * all_idf
-            all_bows.append(all_bow)
-        # try:
-            # all_bows = np.array(all_bows)
-        # except:
-        #     import pdb;pdb.set_trace()
-        if len(all_bows) != input_ids.count(0):
+
+            all_bows_section.append(all_bow)
+
+        ### creating global bow
+        all_bow_global = torch.zeros([vocab_size], dtype=torch.float)
+        all_counter_global = topic_src_info_global
+        all_counter_global_sum = sum(all_counter_global.values())
+        for key, value in all_counter_global.items():
+            all_tf = value / all_counter_global_sum
+            all_file_count_global = all_file_counter_global[int(key)]
+            all_idf = math.log(file_num_global / (all_file_count_global + 1.))
+            all_bow_global[int(key)] = all_tf * all_idf
+
+        if len(all_bows_section) != input_ids.count(0):
             import pdb;pdb.set_trace()
-        assert len(all_bows) == input_ids.count(0), "N/A equal sections"
-        return all_bows
+        assert len(all_bows_section) == input_ids.count(0), "N/A equal sections"
+
+        return all_bows_section, all_bow_global
 
     def generate_summ_bow(self, topic_summ_infos):
         all_bows = []
         for topic_summ_info in topic_summ_infos:
-            vocab_size = self.idf_info["voc_size"]
+            vocab_size = self.idf_info_global["voc_size"]
             all_bow = torch.zeros([vocab_size], dtype=torch.float)
-            all_file_counter = self.idf_info["all"]
+            all_file_counter = self.idf_info_global["all"]
             all_counter = topic_summ_info["all"]
             for key in all_counter.keys():
                 # all_file_count = all_file_counter[key]
@@ -319,7 +324,9 @@ class TGSumTokenizer(LEDTokenizer):
 
 
         if topic_info_tuple is not None:
-            encoded_inputs["src_bow"] = self.generate_src_bow(topic_info_tuple,  encoded_inputs["input_ids"], doc_ids, ids)
+            encoded_inputs["src_bow_section"], encoded_inputs['src_bow_global'] = \
+                self.generate_src_bow(topic_info_tuple[0], topic_info_tuple[1], encoded_inputs["input_ids"], doc_ids, ids)
+
             # encoded_inputs["summ_bow"] = self.generate_summ_bow(topic_info_tuple[1])
 
         # Check lengths
@@ -392,30 +399,43 @@ class TGSumTokenizer(LEDTokenizer):
             )
 
         input_ids = []
-        for idx, ids_or_pair_ids in enumerate(batch_text_or_text_pairs):
-            # if not isinstance(ids_or_pair_ids, (list, tuple)):
-            #     ids, pair_ids = ids_or_pair_ids, None
-            # elif is_split_into_words and not isinstance(ids_or_pair_ids[0], (list, tuple)):
-            ids, pair_ids = ids_or_pair_ids, None
+        if 'tgt' not in doc_ids[0]:
+            for idx, ids_or_pair_ids in enumerate(batch_text_or_text_pairs):
+                # if not isinstance(ids_or_pair_ids, (list, tuple)):
+                #     ids, pair_ids = ids_or_pair_ids, None
+                # elif is_split_into_words and not isinstance(ids_or_pair_ids[0], (list, tuple)):
+                ids, pair_ids = ids_or_pair_ids, None
 
-            # if doc_ids[idx] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
-            #     import pdb;
-            #     pdb.set_trace()
-            # else:
-            #     ids, pair_ids = ids_or_pair_ids
+                # if doc_ids[idx] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
+                #     import pdb;
+                #     pdb.set_trace()
+                # else:
+                #     ids, pair_ids = ids_or_pair_ids
 
-            # ids is a list of lists (sections)
+                # ids is a list of lists (sections)
 
-            first_ids = []
-            for id in ids:
-                first_id = get_input_ids(id)
-                first_ids += first_id + [2, 0]
-            first_ids = first_ids[:-1]
-            # if doc_ids[idx] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
-            #     import pdb;
-            #     pdb.set_trace()
-            second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
-            input_ids.append((first_ids, second_ids))
+                first_ids = []
+                for id in ids:
+                    first_id = get_input_ids(id)
+                    first_ids += first_id + [2, 0]
+                first_ids = first_ids[:-1]
+                # if doc_ids[idx] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
+                #     import pdb;
+                #     pdb.set_trace()
+                second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
+                input_ids.append((first_ids, second_ids))
+        else:
+            for ids_or_pair_ids in batch_text_or_text_pairs:
+                if not isinstance(ids_or_pair_ids, (list, tuple)):
+                    ids, pair_ids = ids_or_pair_ids, None
+                elif is_split_into_words and not isinstance(ids_or_pair_ids[0], (list, tuple)):
+                    ids, pair_ids = ids_or_pair_ids, None
+                else:
+                    ids, pair_ids = ids_or_pair_ids
+
+                first_ids = get_input_ids(ids)
+                second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
+                input_ids.append((first_ids, second_ids))
 
         batch_outputs = self._batch_prepare_for_model(
             input_ids,
@@ -518,28 +538,31 @@ class TGSumTokenizer(LEDTokenizer):
 
         batch_outputs = {}
         for idx, (first_ids, second_ids) in enumerate(batch_ids_pairs):
-            outputs = self.prepare_for_model(
-                first_ids,
-                second_ids,
-                sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
-                doc_ids=doc_ids[idx] if doc_ids is not None else None,
-                topic_info_tuple=(topic_info_tuple["topic_info"][idx]) if topic_info_tuple is not None else None,
-                add_special_tokens=add_special_tokens,
-                padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
-                truncation=truncation_strategy.value,
-                max_length=max_length,
-                stride=stride,
-                pad_to_multiple_of=None,  # we pad in batch afterward
-                return_attention_mask=False,  # we pad in batch afterward
-                return_token_type_ids=return_token_type_ids,
-                return_overflowing_tokens=return_overflowing_tokens,
-                return_special_tokens_mask=return_special_tokens_mask,
-                return_length=return_length,
-                return_tensors=None,  # We convert the whole batch to tensors at the end
-                prepend_batch_axis=False,
-                verbose=verbose,
-            )
+            try:
 
+                outputs = self.prepare_for_model(
+                    first_ids,
+                    second_ids,
+                    sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
+                    doc_ids=doc_ids[idx] if doc_ids is not None else None,
+                    topic_info_tuple=(topic_info_tuple["topic_info_global"][idx], topic_info_tuple["topic_info_section"][idx]) if topic_info_tuple is not None else None,
+                    add_special_tokens=add_special_tokens,
+                    padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
+                    truncation=truncation_strategy.value,
+                    max_length=max_length,
+                    stride=stride,
+                    pad_to_multiple_of=None,  # we pad in batch afterward
+                    return_attention_mask=False,  # we pad in batch afterward
+                    return_token_type_ids=return_token_type_ids,
+                    return_overflowing_tokens=return_overflowing_tokens,
+                    return_special_tokens_mask=return_special_tokens_mask,
+                    return_length=return_length,
+                    return_tensors=None,  # We convert the whole batch to tensors at the end
+                    prepend_batch_axis=False,
+                    verbose=verbose,
+                )
+            except:
+                import pdb;pdb.set_trace()
 
             for key, value in outputs.items():
                 if key not in batch_outputs:
