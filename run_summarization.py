@@ -24,6 +24,8 @@ import random
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
+import pandas as pd
+import wandb
 
 import datasets
 import nltk  # Here to have a nice missing dependency error message early on
@@ -55,7 +57,6 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
 
-
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 from utility import _combine_model_inputs
 
@@ -64,6 +65,7 @@ check_min_version("4.20.0")
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
 logger = logging.getLogger(__name__)
+os.remove('last_id.txt')
 
 try:
     nltk.data.find("tokenizers/punkt")
@@ -221,7 +223,7 @@ class DataTrainingArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=10,
+        default=None,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -714,14 +716,6 @@ def main():
         )
         before_aggregated = {}
 
-        import random
-        # random.seed(888)
-        # randomlist = []
-        # for i in range(0, 5):
-        #     n = random.randint(1, len(decoded_preds_all))
-        #     randomlist.append(n)
-
-        # randomlist = [0, 199, 234, 122, len(preds) - 1]
         randomlist = [0, 4, 10, 15, len(preds) - 1]
 
         logger.info(f" Calculating element-wise predictions: {len(p_ids)}")
@@ -745,9 +739,15 @@ def main():
 
 
             if p_id not in before_aggregated.keys():
-                before_aggregated[p_id] =[{'recall': results_r, 'fmeasure': results_f}]
+                before_aggregated[p_id] = {
+                    "scores": [{'recall': results_r, 'fmeasure': results_f}],
+                    "pred": pred,
+                    "gold_summs": [summ]
+                }
             else:
-                before_aggregated[p_id].append({'recall': results_r, 'fmeasure': results_f})
+                # before_aggregated[p_id].append({'recall': results_r, 'fmeasure': results_f})
+                before_aggregated[p_id]["scores"].append({'recall': results_r, 'fmeasure': results_f})
+                before_aggregated[p_id]["gold_summs"].append(summ)
 
             counter += 1
 
@@ -762,9 +762,63 @@ def main():
             for j, metric in enumerate(['rouge1_f', 'rouge2_f', 'rougeL_f', 'rouge1_r', 'rouge2_r', 'rougeL_r']):
                 kk = "recall" if '_r' in metric else "fmeasure"
                 real_metric = metric.replace('_f', '').replace('_r', '')
+                avg_score_metric_wise = np.average([s[kk][real_metric] for s in scores_dict_list["scores"]])
                 all_results[metric].append(
-                    np.average([s[kk][real_metric] for s in scores_dict_list])
+                    avg_score_metric_wise
                 )
+                # add avg_score to the dict list.
+                if kk == 'fmeasure':
+                    before_aggregated[p_id][f'{real_metric}'] = avg_score_metric_wise
+
+        ## store before_aggregated to wandb
+        # styling first
+        entities_to_be_saved_final = {
+            'paper_id': [],
+            'pred': [],
+            'gold_summs': [],
+            'rouge1': [],
+            'rouge2': [],
+            'rougeL': [],
+        }
+
+        for p_id, paper_info in before_aggregated.items():
+            entities_to_be_saved_final['paper_id'].append(p_id)
+            new_summs_ent = []
+            for k, v in paper_info.items():
+                if k=='gold_summs':
+                    for sum_idx, sum in enumerate(v):
+                        new_summs_ent.append(json.dumps(
+                            {
+                                f'summary_{sum_idx}': sum,
+                                'scores': [paper_info['rouge1'], paper_info['rouge2'], paper_info['rougeL']]
+                            }
+                        ))
+
+                    entities_to_be_saved_final[k].append(new_summs_ent)
+                    continue
+                if k=="scores":
+                    continue
+                else:
+                    entities_to_be_saved_final[k].append(v)
+
+        df = pd.DataFrame(entities_to_be_saved_final)
+
+        last_id = 0
+        if os.path.exists('last_id.txt'):
+            with open('last_id.txt', mode='r') as fR:
+                for l in fR:
+                    last_id = float(l)
+        else:
+            with open('last_id.txt', mode='w') as fW:
+                fW.write(str(last_id))
+
+        df.to_csv(f'results_{last_id+0.5}.csv', index=False)
+
+        wb_logger.save(
+            f'results_{last_id + 0.5}.csv'
+        )
+
+
         # Extract a few results from ROUGE
         # result = {key: value.mid.fmeasure * 100 for key, value in result.items()}
         result = all_results
@@ -775,6 +829,19 @@ def main():
         result["gen_len"] = np.mean(prediction_lens)
         result = {k: round(v, 4) for k, v in result.items()}
         return result
+
+
+    # Initialize wandb to get full control access for logging
+    if training_args.report_to != "none":
+        global wb_logger
+
+        wb_logger = wandb.init(
+            project="huggingface",
+            name=training_args.run_name,
+            tags=["TGSum"],
+        )
+    else:
+        wb_logger=None
 
     # Initialize our Trainer
     trainer = TGSumTrainer(

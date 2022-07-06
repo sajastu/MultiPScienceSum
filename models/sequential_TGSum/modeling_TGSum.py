@@ -1157,15 +1157,9 @@ class TGSumModel(LEDModel):
 
         summ_attn_mask = None
         if bsz * n_summary > 1:
-            try:
-                summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
-            except:
-                import pdb;pdb.set_trace()
+            summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
         if self.training: # in validation and test we will generate only one summary
-            try:
-                decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
-            except:
-                import pdb;pdb.set_trace()
+            decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
         # pad sequence [bsz, n_summary, dim]
         topic_vec_ge = None
         if self.use_topic:
