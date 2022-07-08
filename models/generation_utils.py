@@ -39,6 +39,9 @@ class GenerationMixin(GenerationMixin):
             if not any(argument.startswith(p) for p in irrelevant_prefix)
         }
 
+        # setting global attention mask
+        encoder_kwargs['global_attention_mask'] = torch.zeros_like(encoder_kwargs["attention_mask"])
+        encoder_kwargs['global_attention_mask'][:,section_token_index] = 1
 
         # 3. make sure that encoder returns `ModelOutput`
         model_input_name = model_input_name if model_input_name is not None else self.main_input_name
@@ -48,6 +51,7 @@ class GenerationMixin(GenerationMixin):
         # import pdb;pdb.set_trace()
         model_kwargs["encoder_outputs"]: ModelOutput = encoder(**encoder_kwargs)
         section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1,section_token_index.cuda()).cuda()
+
         model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], section_pre_encodings.mean(dim=1))
         model_kwargs["encoder_outputs"].last_hidden_state = fusing_function(model_kwargs["topic_model_global_outputs"][-1], encoder_kwargs['attention_mask'].size(1), model_kwargs["encoder_outputs"].last_hidden_state )
         # import pdb;pdb.set_trace()

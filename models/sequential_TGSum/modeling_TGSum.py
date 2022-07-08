@@ -1127,8 +1127,9 @@ class TGSumModel(LEDModel):
             )
 
         if encoder_outputs is None:
+            section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
             global_attention_mask = torch.zeros_like(attention_mask)
-            global_attention_mask[:, 0] = 1
+            global_attention_mask[:, section_token_indices] = 1
             encoder_outputs = self.encoder(
                 input_ids=input_ids,
                 attention_mask=attention_mask,

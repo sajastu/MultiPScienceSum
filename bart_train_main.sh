@@ -6,7 +6,7 @@ export MODEL_NAME=allenai/led-large-16384-arxiv
 export DS_DIR=/disk1/sajad/datasets/sci/mup/hf_format/
 CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --model_name_or_path $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-TopicAwareEncAttn-test \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-TopicAwareEncAttn-Sectional \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
@@ -28,9 +28,9 @@ CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --do_train \
     --do_eval \
     --report_to wandb \
-    --run_name mup-led-TopicAwareEncAttn-test
+    --run_name mup-led-TopicAwareEncAttn-Sectional \
+    --metric_for_best_model rougeL \
 
-#    --metric_for_best_model rougeL \
     #    --test_file $DS_DIR/test.reduced.complete.parquet \
 #    --do_predict \
 #    --filtered_ids "7cbbcd36c5af118c7caad20f1b2cf159"
