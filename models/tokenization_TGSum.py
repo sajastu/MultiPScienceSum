@@ -161,7 +161,22 @@ class TGSumTokenizer(LEDTokenizer):
 
     def generate_src_bow(self, topic_src_info_global, topic_src_info_sections, input_ids, doc_id, ids):
         all_bows_section = []
-        truncate_section = input_ids.count(0)
+        truncate_section = min(input_ids.count(0), len(topic_src_info_sections))
+
+        if input_ids.count(0) > truncate_section:
+            # import pdb;pdb.set_trace()
+            truncated_input_ids = []
+            diff = input_ids.count(0) - truncate_section
+            traveresed = 0
+            for idd in reversed(input_ids):
+                if traveresed < diff:
+                    if idd == 0:
+                        traveresed += 1
+                    continue
+                truncated_input_ids.append(idd)
+            input_ids = [l for l in reversed(truncated_input_ids)]
+
+
         vocab_size = self.idf_info_global["voc_size"]
         all_file_counter_section = self.idf_info_section["all"]
         all_file_counter_global = self.idf_info_global["all"]
@@ -322,11 +337,12 @@ class TGSumTokenizer(LEDTokenizer):
 
         encoded_inputs["doc_ids"] = doc_ids
 
-
+        # try:
         if topic_info_tuple is not None:
             encoded_inputs["src_bow_section"], encoded_inputs['src_bow_global'] = \
-                self.generate_src_bow(topic_info_tuple[0], topic_info_tuple[1], encoded_inputs["input_ids"], doc_ids, ids)
-
+            self.generate_src_bow(topic_info_tuple[0], topic_info_tuple[1], encoded_inputs["input_ids"], doc_ids, ids)
+        # except:
+            # import pdb;pdb.set_trace()
             # encoded_inputs["summ_bow"] = self.generate_summ_bow(topic_info_tuple[1])
 
         # Check lengths
@@ -538,31 +554,31 @@ class TGSumTokenizer(LEDTokenizer):
 
         batch_outputs = {}
         for idx, (first_ids, second_ids) in enumerate(batch_ids_pairs):
-            try:
+            # try:
 
-                outputs = self.prepare_for_model(
-                    first_ids,
-                    second_ids,
-                    sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
-                    doc_ids=doc_ids[idx] if doc_ids is not None else None,
-                    topic_info_tuple=(topic_info_tuple["topic_info_global"][idx], topic_info_tuple["topic_info_section"][idx]) if topic_info_tuple is not None else None,
-                    add_special_tokens=add_special_tokens,
-                    padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
-                    truncation=truncation_strategy.value,
-                    max_length=max_length,
-                    stride=stride,
-                    pad_to_multiple_of=None,  # we pad in batch afterward
-                    return_attention_mask=False,  # we pad in batch afterward
-                    return_token_type_ids=return_token_type_ids,
-                    return_overflowing_tokens=return_overflowing_tokens,
-                    return_special_tokens_mask=return_special_tokens_mask,
-                    return_length=return_length,
-                    return_tensors=None,  # We convert the whole batch to tensors at the end
-                    prepend_batch_axis=False,
-                    verbose=verbose,
-                )
-            except:
-                import pdb;pdb.set_trace()
+            outputs = self.prepare_for_model(
+                first_ids,
+                second_ids,
+                sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
+                doc_ids=doc_ids[idx] if doc_ids is not None else None,
+                topic_info_tuple=(topic_info_tuple["topic_info_global"][idx], topic_info_tuple["topic_info_section"][idx]) if topic_info_tuple is not None else None,
+                add_special_tokens=add_special_tokens,
+                padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
+                truncation=truncation_strategy.value,
+                max_length=max_length,
+                stride=stride,
+                pad_to_multiple_of=None,  # we pad in batch afterward
+                return_attention_mask=False,  # we pad in batch afterward
+                return_token_type_ids=return_token_type_ids,
+                return_overflowing_tokens=return_overflowing_tokens,
+                return_special_tokens_mask=return_special_tokens_mask,
+                return_length=return_length,
+                return_tensors=None,  # We convert the whole batch to tensors at the end
+                prepend_batch_axis=False,
+                verbose=verbose,
+            )
+            # except:
+            #     import pdb;pdb.set_trace()
 
             for key, value in outputs.items():
                 if key not in batch_outputs:

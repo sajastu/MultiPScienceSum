@@ -4,9 +4,9 @@ export CUDA_VISIBLE_DEVICES=0,1
 USER=$1
 export MODEL_NAME=allenai/led-large-16384-arxiv
 export DS_DIR=/disk1/sajad/datasets/sci/mup/hf_format/
-CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
+CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --model_name_or_path $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-TopicAwareEncAttn-Sectional \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-TopicAwareEncAttn-Sectional-0.1TL-2ndRun \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
@@ -27,9 +27,10 @@ CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --validation_file $DS_DIR/val.parquet \
     --do_train \
     --do_eval \
-    --report_to wandb \
-    --run_name mup-led-TopicAwareEncAttn-Sectional \
-    --metric_for_best_model rougeL \
+    --report_to none \
+    --run_name mup-led-TopicAwareEncAttn-Sectional-0.1TL-2ndRun \
+    --metric_for_best_model rougeL_f \
+    --greater_is_better True \
 
     #    --test_file $DS_DIR/test.reduced.complete.parquet \
 #    --do_predict \

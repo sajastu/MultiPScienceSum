@@ -174,6 +174,7 @@ class DataTrainingArguments:
         default=4,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
+
     max_source_length: Optional[int] = field(
         default=4096,
         metadata={
@@ -865,6 +866,8 @@ def main():
         result = all_results
         # mean over all results...
         result = {k: np.mean(v) * 100 for k, v in result.items()}
+
+        # result['eval_rougeL'] = result['rougeL_f']
 
         prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
         result["gen_len"] = np.mean(prediction_lens)
