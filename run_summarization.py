@@ -223,7 +223,7 @@ class DataTrainingArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=10,
+        default=None,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -833,6 +833,15 @@ def main():
 
 
         if wb_logger is not None:
+
+            ## format multiple summaries...
+            new_lst_gold_sums = []
+            for j, sums_info_lst in enumerate(entities_to_be_saved_final['gold_summs']):
+                new_lst_gold_sum = json.dumps(sums_info_lst, indent=2)
+                new_lst_gold_sums.append(new_lst_gold_sum)
+            entities_to_be_saved_final['gold_summs'] = new_lst_gold_sums
+
+
             df = pd.DataFrame(entities_to_be_saved_final)
 
             last_id = 0
@@ -844,10 +853,10 @@ def main():
                 with open(LAST_ID_FILENAME, mode='w') as fW:
                     fW.write(str(last_id))
 
-            df.to_csv(f'results_{last_id+0.5}.csv', index=False)
+            df.to_csv(f'results_{RUN_NAME}_{last_id+0.5}.csv', index=False)
 
             wb_logger.save(
-                f'results_{last_id + 0.5}.csv'
+                f'results_{RUN_NAME}_{last_id+0.5}.csv'
             )
 
 
@@ -864,6 +873,8 @@ def main():
 
 
     # Initialize wandb to get full control access for logging
+    global RUN_NAME
+    RUN_NAME = None
     if training_args.report_to != "none":
         global wb_logger
 
@@ -872,6 +883,7 @@ def main():
             name=training_args.run_name,
             tags=["TGSum"],
         )
+        RUN_NAME = training_args.run_name
     else:
         wb_logger=None
 
