@@ -65,7 +65,7 @@ check_min_version("4.20.0")
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
 logger = logging.getLogger(__name__)
-os.remove('last_id.txt')
+
 
 try:
     nltk.data.find("tokenizers/punkt")
@@ -223,7 +223,7 @@ class DataTrainingArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=None,
+        default=10,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -335,6 +335,11 @@ def main():
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
+
+    global LAST_ID_FILENAME
+    LAST_ID_FILENAME = f'last_id_{training_args.run_name}.txt'
+    if os.path.exists(f'last_id_{training_args.run_name}.txt'):
+        os.remove(f'last_id_{training_args.run_name}.txt')
 
     if data_args.source_prefix is None and model_args.model_name_or_path in [
         "t5-small",
@@ -689,6 +694,18 @@ def main():
         return paper_ids_all, preds_all, decoded_all
 
     def compute_metrics(eval_preds):
+
+        class bcolors:
+            HEADER = '\033[95m'
+            OKBLUE = '\033[94m'
+            OKCYAN = '\033[96m'
+            OKGREEN = '\033[92m'
+            WARNING = '\033[93m'
+            FAIL = '\033[91m'
+            ENDC = '\033[0m'
+            BOLD = '\033[1m'
+            UNDERLINE = '\033[4m'
+
         preds, labels, doc_ids = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
@@ -716,17 +733,15 @@ def main():
         )
         before_aggregated = {}
 
-        randomlist = [0, 4, 10, 15, len(preds) - 1]
+        randomlist = [0, 2, 5, 6, 9]
 
         logger.info(f" Calculating element-wise predictions: {len(p_ids)}")
         print()
         counter = 0
         for p_id, pred, summ in zip(p_ids, decoded_preds_all, decoded_labels_all):
 
-            if counter in randomlist:
-                print()
-                print('Pred: ' + pred.replace("\n", " "))
-                print('Summary: ' + summ.replace("\n", " "))
+            # if counter in randomlist:
+
 
 
             results_f = {"rouge1": 0, "rouge2": 0, "rougeL": 0}
@@ -758,19 +773,20 @@ def main():
         all_results = {'rouge1_f':[], 'rouge2_f': [], 'rougeL_f':[], 'rouge1_r': [], 'rouge2_r': [], 'rougeL_r': []}
         logger.info(f" Averaging against multiple summaries: {len(before_aggregated)}")
         print()
-        for p_id, scores_dict_list in before_aggregated.items():
+        for p_id, paper_info in before_aggregated.items():
+            # num_summaries = len(paper_info["gold_summs"])
             for j, metric in enumerate(['rouge1_f', 'rouge2_f', 'rougeL_f', 'rouge1_r', 'rouge2_r', 'rougeL_r']):
-                kk = "recall" if '_r' in metric else "fmeasure"
+                metric_type = "recall" if '_r' in metric else "fmeasure"
                 real_metric = metric.replace('_f', '').replace('_r', '')
-                avg_score_metric_wise = np.average([s[kk][real_metric] for s in scores_dict_list["scores"]])
+                avg_score_metric_wise = np.average([s[metric_type][real_metric] for s in paper_info["scores"]])
                 all_results[metric].append(
                     avg_score_metric_wise
                 )
                 # add avg_score to the dict list.
-                if kk == 'fmeasure':
+                if metric_type == 'fmeasure':
                     before_aggregated[p_id][f'{real_metric}'] = avg_score_metric_wise
 
-        ## store before_aggregated to wandb
+        # store before_aggregated to wandb
         # styling first
         entities_to_be_saved_final = {
             'paper_id': [],
@@ -781,18 +797,22 @@ def main():
             'rougeL': [],
         }
 
+        counter = -1
         for p_id, paper_info in before_aggregated.items():
+            counter += 1
+
             entities_to_be_saved_final['paper_id'].append(p_id)
+
             new_summs_ent = []
             for k, v in paper_info.items():
                 if k=='gold_summs':
                     for sum_idx, sum in enumerate(v):
-                        new_summs_ent.append(json.dumps(
+                        new_summs_ent.append(
                             {
                                 f'summary_{sum_idx}': sum,
-                                'scores': [paper_info['rouge1'], paper_info['rouge2'], paper_info['rougeL']]
+                                'scores': [paper_info['scores'][sum_idx]['fmeasure']['rouge1'], paper_info['scores'][sum_idx]['fmeasure']['rouge2'], paper_info['scores'][sum_idx]['fmeasure']['rougeL']]
                             }
-                        ))
+                        )
 
                     entities_to_be_saved_final[k].append(new_summs_ent)
                     continue
@@ -801,22 +821,34 @@ def main():
                 else:
                     entities_to_be_saved_final[k].append(v)
 
-        df = pd.DataFrame(entities_to_be_saved_final)
+            if counter in randomlist:
+                print(f'{bcolors.WARNING}ID:{bcolors.ENDC}' + p_id)
+                print(f'{bcolors.OKBLUE}Pred:{bcolors.ENDC}' + entities_to_be_saved_final['pred'][-1].replace("\n", " "))
+                for idx, sum in enumerate(entities_to_be_saved_final['gold_summs'][-1]):
+                    print(f'{bcolors.OKGREEN}Summary_{idx}:{bcolors.ENDC}' + sum[f'summary_{idx}'].replace("\n", " ") + f'{bcolors.BOLD}{sum["scores"]}{bcolors.ENDC}')
+                print()
+                print('-'*70)
+                print()
 
-        last_id = 0
-        if os.path.exists('last_id.txt'):
-            with open('last_id.txt', mode='r') as fR:
-                for l in fR:
-                    last_id = float(l)
-        else:
-            with open('last_id.txt', mode='w') as fW:
-                fW.write(str(last_id))
 
-        df.to_csv(f'results_{last_id+0.5}.csv', index=False)
 
-        wb_logger.save(
-            f'results_{last_id + 0.5}.csv'
-        )
+        if wb_logger is not None:
+            df = pd.DataFrame(entities_to_be_saved_final)
+
+            last_id = 0
+            if os.path.exists(LAST_ID_FILENAME):
+                with open(LAST_ID_FILENAME, mode='r') as fR:
+                    for l in fR:
+                        last_id = float(l)
+            else:
+                with open(LAST_ID_FILENAME, mode='w') as fW:
+                    fW.write(str(last_id))
+
+            df.to_csv(f'results_{last_id+0.5}.csv', index=False)
+
+            wb_logger.save(
+                f'results_{last_id + 0.5}.csv'
+            )
 
 
         # Extract a few results from ROUGE

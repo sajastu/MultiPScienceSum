@@ -24,8 +24,9 @@ from packaging import version
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from ...activations import ACT2FN, gelu
-from ...modeling_outputs import (
+# from ...activations import , gelu
+from transformers.activations import ACT2FN
+from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -35,16 +36,16 @@ from ...modeling_outputs import (
     SequenceClassifierOutput,
     TokenClassifierOutput,
 )
-from ...modeling_utils import PreTrainedModel
-from ...pytorch_utils import apply_chunking_to_forward, find_pruneable_heads_and_indices, prune_linear_layer
-from ...utils import (
+from transformers.modeling_utils import PreTrainedModel
+from transformers.pytorch_utils import apply_chunking_to_forward, find_pruneable_heads_and_indices, prune_linear_layer
+from transformers.utils import (
     add_code_sample_docstrings,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
     logging,
     replace_return_docstrings,
 )
-from .configuration_roberta import RobertaConfig
+from transformers.models.roberta.configuration_roberta import RobertaConfig
 
 
 logger = logging.get_logger(__name__)
@@ -156,7 +157,7 @@ class RobertaEmbeddings(nn.Module):
 
 # Copied from transformers.models.bert.modeling_bert.BertSelfAttention with Bert->Roberta
 class RobertaSelfAttention(nn.Module):
-    def __init__(self, config, position_embedding_type=None):
+    def __init__(self, config, position_embedding_type=None, topic_dim=100):
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
@@ -171,6 +172,11 @@ class RobertaSelfAttention(nn.Module):
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.key = nn.Linear(config.hidden_size, self.all_head_size)
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
+
+        self.query_topic = nn.Linear(topic_dim, self.all_head_size)
+        self.key_topic = nn.Linear(topic_dim, self.all_head_size)
+        self.value_topic = nn.Linear(topic_dim, self.all_head_size)
+        self.linear_topic_w = nn.Linear(self.num_attention_heads * self.attention_head_size * 3, self.num_attention_heads)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.position_embedding_type = position_embedding_type or getattr(
@@ -200,6 +206,7 @@ class RobertaSelfAttention(nn.Module):
     ) -> Tuple[torch.Tensor]:
 
         mixed_query_layer = self.query(hidden_states)
+        mixed_query_layer_topic = self.query_topic(topic_emb)
 
         # If this is instantiated as a cross-attention module, the keys
         # and values come from an encoder; the attention mask needs to be
@@ -220,11 +227,24 @@ class RobertaSelfAttention(nn.Module):
             value_layer = self.transpose_for_scores(self.value(hidden_states))
             key_layer = torch.cat([past_key_value[0], key_layer], dim=2)
             value_layer = torch.cat([past_key_value[1], value_layer], dim=2)
+
+            key_layer_topic = self.transpose_for_scores(self.key(topic_emb))
+            value_layer_topic = self.transpose_for_scores(self.value(topic_emb))
+            key_layer_topic = torch.cat([past_key_value[2], key_layer_topic], dim=2)
+            value_layer_topic = torch.cat([past_key_value[3], value_layer_topic], dim=2)
+
+
         else:
             key_layer = self.transpose_for_scores(self.key(hidden_states))
             value_layer = self.transpose_for_scores(self.value(hidden_states))
 
+            try:
+                key_layer_topic = self.transpose_for_scores(self.key_topic(topic_emb))
+                value_layer_topic = self.transpose_for_scores(self.value_topic(topic_emb))
+            except:
+                import pdb;pdb.set_trace()
         query_layer = self.transpose_for_scores(mixed_query_layer)
+        query_layer_topic = self.transpose_for_scores(mixed_query_layer_topic)
 
         if self.is_decoder:
             # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
@@ -238,6 +258,7 @@ class RobertaSelfAttention(nn.Module):
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores_topic = torch.matmul(query_layer_topic, key_layer_topic.transpose(-1, -2))
 
         if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             seq_length = hidden_states.size()[1]
@@ -256,22 +277,38 @@ class RobertaSelfAttention(nn.Module):
                 attention_scores = attention_scores + relative_position_scores_query + relative_position_scores_key
 
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+        attention_scores_topic = attention_scores_topic / math.sqrt(self.attention_head_size)
+
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in RobertaModel forward() function)
             attention_scores = attention_scores + attention_mask
+            attention_scores_topic = attention_scores_topic + attention_mask
 
         # Normalize the attention scores to probabilities.
         attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+
+        """""""""""""""""""""""""""""""""""""""""""""""
+        """""""""""""" TOPIC ATTENTION """"""""""""""
+        """""""""""""""""""""""""""""""""""""""""""""""
+
+        attention_probs_topic = nn.functional.softmax(attention_scores_topic, dim=-1)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_topic = torch.matmul(attention_probs_topic, value_layer_topic)
+        if self.training:
+            p_vec = torch.cat([context_layer, context_topic, query_layer], -1).transpose(1, 2).contiguous().view(1, -1, self.num_attention_heads* self.attention_head_size * 3)
+        else:
+            p_vec = torch.cat([context_layer, context_topic, query_layer], -1).transpose(1, 2).contiguous().view(attention_probs.size(0), -1, self.num_attention_heads* self.attention_head_size * 3)
+        try:
+            topic_p = torch.sigmoid(self.linear_topic_w(p_vec).transpose(1, 2)).unsqueeze(-1).expand_as(attention_probs)
+        except:
+            import pdb;pdb.set_trace()
+        attention_probs = topic_p * attention_probs + (1 - topic_p) * attention_probs_topic
 
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
         attention_probs = self.dropout(attention_probs)
 
-        # Mask heads if we want to
-        if head_mask is not None:
-            attention_probs = attention_probs * head_mask
-
-        context_layer = torch.matmul(attention_probs, value_layer)
+        # context_layer = torch.matmul(attention_probs, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
@@ -410,8 +447,7 @@ class RobertaLayer(nn.Module):
         output_attentions: Optional[bool] = False,
     ) -> Tuple[torch.Tensor]:
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
-        self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
-
+        self_attn_past_key_value = past_key_value[:4] if past_key_value is not None else None
         self_attention_outputs = self.attention(
             hidden_states,
             topic_emb,

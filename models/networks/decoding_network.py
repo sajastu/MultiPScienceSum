@@ -131,6 +131,7 @@ class DecoderNetwork(nn.Module):
             beta = F.softmax(self.beta_batchnorm(self.beta), dim=1)
             self.topic_word_matrix = beta
             word_dist = torch.matmul(theta, beta)
+            import pdb;pdb.set_trace()
             topic_emb = torch.matmul(theta, self.topic_emb)
 
             # word_dist: batch_size x input_size

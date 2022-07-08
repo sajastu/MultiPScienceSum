@@ -631,6 +631,7 @@ class TGSumTrainer(Seq2SeqTrainer):
             Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
             labels (each being optional).
         """
+        section_idx = ((inputs['input_ids'][0] == 0).nonzero(as_tuple=True)[0])
 
         if not self.args.predict_with_generate or prediction_loss_only:
             return super().prediction_step(
@@ -660,27 +661,14 @@ class TGSumTrainer(Seq2SeqTrainer):
         generated_tokens = self.model.generate(
             generation_inputs,
             src_bow_global=inputs['src_bow_global'],
+            src_bow_section=inputs['src_bow_section'],
             doc_ids=inputs['doc_ids'],
+            section_token_index=section_idx,
             **gen_kwargs,
         )
         # in case the batch is shorter than max length, the output should be padded
         if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
             generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
-
-        # with torch.no_grad():
-        #     with self.autocast_smart_context_manager():
-        #         import pdb;pdb.set_trace()
-        #         outputs = model(**inputs)
-        #     if has_labels:
-        #         if self.label_smoother is not None:
-        #             loss = self.label_smoother(outputs, inputs["labels"]).mean().detach()
-        #         else:
-        #             loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]).mean().detach()
-        #     else:
-        #         loss = None
-        #
-        # if self.args.prediction_loss_only:
-        #     return (loss, None, None)
 
         if has_labels:
             # labels = inputs["labels"][0][0][None, None, :]

@@ -33,8 +33,10 @@ import torch.nn.functional as F
 
 # from graph_data_prepartion.preprocess_utils.conceptnet import merged_relations
 from data_processor.others.vocab_wrapper import VocabWrapper
+from models.encoder_sect import TransformerEncoder
 from models.generation_utils import GenerationMixin
 from models.networks.decoding_network import DecoderNetwork
+from models.sequential_TGSum.roberta_tgsum import RobertaEncoder
 from models.topic import TopicModel
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import no_init_weights, get_checkpoint_shard_files, load_state_dict, \
@@ -43,7 +45,7 @@ from transformers.modeling_utils import no_init_weights, get_checkpoint_shard_fi
 # from .model_outputs import BaseModelOutput
 # from ..grease_model import modeling_gnn
 # from ..grease_model.utils import layers
-from transformers import  LEDModel, LEDConfig, LEDForConditionalGeneration
+from transformers import LEDModel, LEDConfig, LEDForConditionalGeneration, RobertaConfig
 from transformers.modeling_outputs import Seq2SeqModelOutput, BaseModelOutputWithPastAndCrossAttentions
 from transformers.models.bart.modeling_bart import BartEncoder, BartPretrainedModel, BartDecoder
 
@@ -134,6 +136,7 @@ class LEDSeq2SeqModelOutput(ModelOutput):
 
     last_hidden_state: torch.FloatTensor = None
     topic_info: Any = None
+    topic_info_section: Any = None
     past_key_values: Optional[List[torch.FloatTensor]] = None
     decoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     decoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -543,25 +546,38 @@ class TGSumDecoderLayer(nn.Module):
         self.activation_dropout = config.activation_dropout
 
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-        # self.encoder_attn = LEDDecoderAttention(
-        #     self.embed_dim,
-        #     config.decoder_attention_heads,
-        #     dropout=config.attention_dropout,
-        #     is_decoder=True,
-        # )
 
-        if self.use_topic:
+        self.encoder_attn = LEDDecoderAttention(
+            self.embed_dim,
+            config.decoder_attention_heads,
+            dropout=config.attention_dropout,
+            is_decoder=True,
+        )
 
-            self.encoder_attn = LEDDecoderAttentionTopicAware(
-                self.embed_dim,
-                topic_dim=100,
-                num_heads=config.decoder_attention_heads,
-                dropout=config.attention_dropout,
-                is_decoder=True,
-                k=k,
-                init_k=init_k,
-            )
+        self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+
+        self.encoder_attn_section = LEDDecoderAttention(
+            self.embed_dim,
+            config.decoder_attention_heads,
+            dropout=config.attention_dropout,
+            is_decoder=True,
+        )
+        self.encoder_attn_layer_norm_section = nn.LayerNorm(self.embed_dim)
+
+        # if self.use_topic:
+
+            # self.encoder_attn = LEDDecoderAttentionTopicAware(
+            #     self.embed_dim,
+            #     topic_dim=100,
+            #     num_heads=config.decoder_attention_heads,
+            #     dropout=config.attention_dropout,
+            #     is_decoder=True,
+            #     k=k,
+            #     init_k=init_k,
+            # )
             # self.fc3 = nn.Linear(self.embed_dim * 2, self.embed_dim)
+
+
 
         # self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
         self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
@@ -572,10 +588,11 @@ class TGSumDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        topic_vec_ge=None,
+        section_encoder_outputs: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask_section: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
@@ -617,66 +634,45 @@ class TGSumDecoderLayer(nn.Module):
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
         # Cross-Attention Block
-        cross_attn_present_key_value = None
 
         if encoder_hidden_states is not None:
             residual = hidden_states
 
-            # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
-            # cross_attn_past_key_value = past_key_value[-4:-2:] if past_key_value is not None else None
+            cross_attn_past_key_value_word = past_key_value[2:4] if past_key_value is not None else None
+            cross_attn_past_key_value_section = past_key_value[4:] if past_key_value is not None else None
 
-            if self.use_topic:
-                if self.k > self.init_k:
-                    cross_attn_past_key_value = past_key_value[-4:] if past_key_value is not None else None
-                else:
-                    cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
 
-                # try:
-                hidden_states, cross_attn_weights, cross_attn_present_key_value = \
+
+            hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
+            self.encoder_attn_section(
+                hidden_states=hidden_states,  # decoder query
+                key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
+                attention_mask=encoder_attention_mask_section,
+                layer_head_mask=cross_attn_layer_head_mask,
+                past_key_value=cross_attn_past_key_value_section,
+                output_attentions=output_attentions,
+            )
+            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+            hidden_states = residual + hidden_states
+            hidden_states = self.encoder_attn_layer_norm_section(hidden_states)
+
+            hidden_states, cross_attn_weights_word, cross_attn_present_key_value_word = \
                 self.encoder_attn(
                     hidden_states=hidden_states,  # decoder query
-                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states, # encoder memory
-                    key_value_states_topical=topic_vec_ge.repeat(hidden_states.size(0), 1, 1) if self.training else topic_vec_ge,  # topic memory
-                    # key_value_states=topic_vec_ge.repeat(hidden_states.size(0), 1, 1) if self.training else topic_vec_ge[None, :, :],  # topic memory #5
+                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1,
+                                                                  1) if self.training else encoder_hidden_states.unsqueeze(
+                        0).repeat(encoder_attention_mask.size(0), 1, 1),
                     attention_mask=encoder_attention_mask,
-                    # attention_mask=encoder_attention_mask[:, :, :, 0][:, :, :, None],
                     layer_head_mask=cross_attn_layer_head_mask,
-                    past_key_value=cross_attn_past_key_value,
+                    past_key_value=cross_attn_past_key_value_word,
                     output_attentions=output_attentions,
                 )
-                # except:
-                #     import pdb;pdb.set_trace()
-                hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-                hidden_states = residual + hidden_states
-                hidden_states = self.encoder_attn_layer_norm(hidden_states)
-                # import pdb;pdb.set_trace()
+            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+            hidden_states = residual + hidden_states
+            hidden_states = self.encoder_attn_layer_norm(hidden_states)
 
-            # hidden_states, cross_attn_weights, cross_attn_present_key_value = \
-            # self.encoder_attn(
-            #     hidden_states=hidden_states, # decoder query
-            #     key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states, # encoder memory
-            #     attention_mask=encoder_attention_mask,
-            #     layer_head_mask=cross_attn_layer_head_mask,
-            #     past_key_value=cross_attn_past_key_value,
-            #     output_attentions=output_attentions,
-            # )
-
-
-                # hidden_states = self.fc3(torch.cat([hidden_states_words, hidden_states_topic], dim=-1))
-
-            # else:
-            #     hidden_states = hidden_states_words
-
-            # hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-            # hidden_states = residual + hidden_states
-            # hidden_states = self.encoder_attn_layer_norm(hidden_states)
-
-            # add cross-attn to positions 3,4 of present_key_value tuple
-            # if self.use_topic:
-            #     present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_topic
-            # else:
-            present_key_value = present_key_value + cross_attn_present_key_value
-            # present_key_value_topic = present_key_value_topic + cross_attn_present_key_value
+            present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_section
+            # present_key_value = present_key_value + cross_attn_present_key_value_word
 
         # Fully Connected
         residual = hidden_states
@@ -690,7 +686,7 @@ class TGSumDecoderLayer(nn.Module):
         outputs = (hidden_states,)
 
         if output_attentions:
-            outputs += (self_attn_weights, cross_attn_weights)
+            outputs += (self_attn_weights, cross_attn_weights_word, cross_attn_weights_section)
 
         if use_cache:
             outputs += (present_key_value,)
@@ -734,8 +730,9 @@ class TGSumDecoder(LEDDecoder):
     def forward(
         self,
         input_ids=None,
-        topic_vec_ge=None,
+        section_encodings=None,
         attention_mask=None,
+        encoder_attention_mask_section=None,
         summ_attn_mask=None,
         global_attention_mask=None,
         encoder_hidden_states=None,
@@ -811,7 +808,8 @@ class TGSumDecoder(LEDDecoder):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
 
-
+        # if not self.training:
+        #     import pdb;pdb.set_trace()
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -862,16 +860,25 @@ class TGSumDecoder(LEDDecoder):
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
 
             if summ_attn_mask is not None: # batch > 1
-                try:
-                    encoder_attention_mask = ~(summ_attn_mask[:, None, :, None].expand_as(_expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])).bool())
-                except:
-                    import pdb;pdb.set_trace()
+                encoder_attention_mask = ~(summ_attn_mask[:, None, :, None].expand_as(_expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])).bool())
                 encoder_attention_mask = encoder_attention_mask.int()
+
+                encoder_attention_mask_section = ~(summ_attn_mask[:, None, :, None].expand_as(
+                    _expand_mask(encoder_attention_mask_section.repeat(input_shape[0], 1),
+                                 inputs_embeds.dtype, tgt_len=input_shape[-1])).bool())
+                encoder_attention_mask_section = encoder_attention_mask_section.int()
+
             else:
                 if not self.training:
                     encoder_attention_mask = _expand_mask(encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    # import pdb;pdb.set_trace()
+                    encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section, inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    # encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section, inputs_embeds.dtype, tgt_len=input_shape[-1])
+
                 else:
                     encoder_attention_mask = _expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
+
 
 
         # embed positions
@@ -906,6 +913,8 @@ class TGSumDecoder(LEDDecoder):
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
+
+
             if self.gradient_checkpointing and self.training:
 
                 if use_cache:
@@ -920,25 +929,29 @@ class TGSumDecoder(LEDDecoder):
                         return module(*inputs, output_attentions, use_cache)
 
                     return custom_forward
+                # import pdb;pdb.set_trace()
 
                 layer_outputs = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(decoder_layer),
                     hidden_states,
-                    topic_vec_ge,
+                    section_encodings,
                     combined_attention_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
+                    encoder_attention_mask_section,
                     head_mask[idx] if head_mask is not None else None,
                     cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None,
                     None,
                 )
             else:
+
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=combined_attention_mask,
                     encoder_hidden_states=encoder_hidden_states,
-                    topic_vec_ge=topic_vec_ge,
+                    section_encoder_outputs=section_encodings,
                     encoder_attention_mask=encoder_attention_mask,
+                    encoder_attention_mask_section=encoder_attention_mask_section,
                     layer_head_mask=(head_mask[idx] if head_mask is not None else None),
                     cross_attn_layer_head_mask=(
                         cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
@@ -997,52 +1010,26 @@ class TGSumModel(LEDModel):
 
         self.use_topic = use_topic
 
-        if use_topic:
-            #### TOPIC MODELING
-            topic_emb_size = 100
-            # self.loss_lambda = 0.001
-            # self.voc_wrapper = VocabWrapper("word2vec")
-            # self.voc_wrapper.load_emb("/disk1/sajad/w2v_embeds/w2v_mup.emb")
-            # voc_emb = torch.tensor(self.voc_wrapper.get_emb())
-            # self.hidden_size = voc_emb
+        #### TOPIC MODELING
+        topic_emb_size = 100
+        self.top_words_dim = 3000
+        self.encoder_section = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
+                                               dropout=0.2, num_inter_layers=2, topic_dim=topic_emb_size)
+        self.num_topics = 50
+        self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
+                                          infnet='combined', n_components=self.num_topics, model_type='prodLDA',
+                                          hidden_sizes=(100, 100), activation='softplus',
+                                          dropout=0.2, learn_priors=True, label_size=0)
 
+        self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, config.d_model)
+        self.topic_emb_linear = nn.Linear(topic_emb_size, config.d_model)
 
-            # self.topic_model = TopicModel(voc_emb.size(0), voc_emb.size(-1), topic_num=50, noise_rate=0.5,
-            #                               embeddings=voc_emb)
-
-            self.n_components = 100
-            self.topic_model = DecoderNetwork(input_size=3000, bert_size=1024, infnet='combined', n_components=self.n_components, model_type='prodLDA',
-                                        hidden_sizes=(100, 100), activation='softplus',
-                                        dropout=0.2, learn_priors=True, label_size=0)
-
-
-
-            # self.split_noise = split_noise
-            #
-            # if self.split_noise:
-            #     self.topic_gate_linear_summ = nn.Linear(config.d_model + topic_emb_size, topic_emb_size)
-            #     self.topic_emb_linear_summ = nn.Linear(config.d_model, topic_emb_size)
-            #     self.topic_gate_linear_noise = nn.Linear(config.d_model + topic_emb_size, topic_emb_size)
-            #     self.topic_emb_linear_noise = nn.Linear(config.d_model, topic_emb_size)
-            # else:
-            self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, topic_emb_size)
-            self.topic_emb_linear = nn.Linear(config.d_model, topic_emb_size)
-
-            if self.use_topic:
-                # if self.split_noise:
-                #     for p in self.topic_gate_linear_summ.parameters():
-                #         self._set_parameter_linear(p)
-                #     for p in self.topic_emb_linear_summ.parameters():
-                #         self._set_parameter_linear(p)
-                #     for p in self.topic_gate_linear_noise.parameters():
-                #         self._set_parameter_linear(p)
-                #     for p in self.topic_emb_linear_noise.parameters():
-                #         self._set_parameter_linear(p)
-                # else:
-                for p in self.topic_gate_linear.parameters():
-                    self._set_parameter_linear(p)
-                for p in self.topic_emb_linear.parameters():
-                    self._set_parameter_linear(p)
+        for p in self.topic_gate_linear.parameters():
+            self._set_parameter_linear(p)
+        for p in self.topic_emb_linear.parameters():
+            self._set_parameter_linear(p)
+        for module in self.encoder_section.modules():
+            self._set_parameter_tf(module)
 
     def _set_parameter_linear(self, p):
         if p.dim() > 1:
@@ -1050,18 +1037,26 @@ class TGSumModel(LEDModel):
         else:
             p.data.zero_()
 
+    def _set_parameter_tf(self, module):
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+        if isinstance(module, nn.Linear) and module.bias is not None:
+            module.bias.data.zero_()
 
-    def _topic_vec_ge(self, topic_vec_all, max_len, vec):
+    def _topic_vec_ge(self, topic_emb, max_len, vec):
         if self.training:
             bsz = 1
         else:
-            bsz = topic_vec_all.size(0)
+            bsz = topic_emb.size(0)
 
-        topic_vec = topic_vec_all.unsqueeze(1).expand(bsz, max_len, -1)
+        topic_vec = topic_emb.unsqueeze(1).expand(bsz, max_len, -1)
         mapped_vec = vec
 
         gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
-        fused_vec = (1 - gate) * topic_vec + gate * self.topic_emb_linear(mapped_vec)
+        fused_vec = (1 - gate) * self.topic_emb_linear(topic_vec) + gate * mapped_vec
 
         return fused_vec
 
@@ -1077,6 +1072,15 @@ class TGSumModel(LEDModel):
     def get_encoder(self):
         return self.encoder
 
+    def get_section_encoder(self):
+        return self.encoder_section
+
+    def get_topic_model(self):
+        return self.topic_model
+
+    def get_topic_fuse(self):
+        return self._topic_vec_ge
+
     def get_decoder(self):
         return self.decoder
 
@@ -1087,6 +1091,11 @@ class TGSumModel(LEDModel):
         src_bow_section=None,
         doc_ids=None,
         step=None,
+        topic_model_outputs=None,
+        section_token_index=None,
+        encoder_section_outputs=None,
+        topic_model_global_outputs=None,
+        topic_model_section_outputs=None,
         attention_mask: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.LongTensor] = None,
         decoder_attention_mask: Optional[torch.LongTensor] = None,
@@ -1110,12 +1119,6 @@ class TGSumModel(LEDModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-
-
-        # Using this like Bart, as LED is derived from it. So far
-        # No checkpoint on the hub exists that uses that in practice.
-        # https://github.com/huggingface/transformers/blob/ac3cb660cad283163f7c73cad511124e845ca388/src/transformers/models/bart/modeling_bart.py#L1153
-
         if decoder_input_ids is None and decoder_inputs_embeds is None:
             # import pdb;
             # pdb.set_trace()
@@ -1136,6 +1139,18 @@ class TGSumModel(LEDModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
+
+            if topic_model_global_outputs is None:
+                prior_mean, prior_variance, posterior_mean, posterior_variance, \
+                posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
+                                                                                                   encoder_outputs[0].mean(dim=1),
+                                                                                                   labels=None)  # X_contexual is the source embedding
+            else:
+                prior_mean, prior_variance, posterior_mean, posterior_variance, \
+                posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
+
+            encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs.last_hidden_state)
+
         # If the user passed a tuple for encoder_outputs, we wrap it in a LEDEncoderBaseModelOutput when return_dict=False
         elif return_dict and not isinstance(encoder_outputs, LEDEncoderBaseModelOutput):
             encoder_outputs = LEDEncoderBaseModelOutput(
@@ -1143,46 +1158,76 @@ class TGSumModel(LEDModel):
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
                 global_attentions=encoder_outputs[3] if len(encoder_outputs) > 3 else None,
-            )
-        # if step==1:
-        #     import pdb;pdb.set_trace()
-        bsz = 1
-        n_summary = 1
-        if decoder_input_ids is not None and self.training:
-            n_summary = len(decoder_input_ids[0])
-            # source_bow_section = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=0).unsqueeze(0)
-        # else:
-        #     n_summary = 1
-        # only bsz=1 is supported...
+        )
 
-        summ_attn_mask = None
-        if bsz * n_summary > 1:
-            summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
-        if self.training: # in validation and test we will generate only one summary
-            decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
-        # pad sequence [bsz, n_summary, dim]
-        topic_vec_ge = None
-        if self.use_topic:
-            # topic_loss, topic_info = self.topic_model(source_bow, summ_bow)
-            # self.topic_loss = self.loss_lambda * topic_loss
-            # topic_vec_ge = self._topic_vec_ge(topic_info, attention_mask.size(1), encoder_outputs[0], summ_bow.size(1) if self.training else 1)
+        if topic_model_global_outputs is None:
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global, encoder_outputs[0][:, 0], labels=None) # X_contexual is the source embedding
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
+                                                                                               encoder_outputs[0].mean(
+                                                                                                   dim=1),
+                                                                                               labels=None)  # X_contexual is the source embedding
+        else:
+            prior_mean, prior_variance, posterior_mean, posterior_variance, \
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
 
-            topic_vec_ge = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs[0])
+        """""
+        
+        """
 
-            if self.training:
-                topic_vec_ge = (topic_vec_ge.view(1, attention_mask.size(1), -1))
-            # else:
-            #     import pdb;pdb.set_trace()
-                # import pdb;pdb.set_trace()
-                # topic_emb = (topic_emb[:, :, None].view(1, attention_mask.size(1), -1))
+
+        bsz = 1
+
+        if decoder_input_ids is not None:
+            n_summary = len(decoder_input_ids[0])
+        else: # in validation/test we will generate one summary
+            n_summary = 1
+
+
+        # creating summary attention mask; no need for summ_attn_mask in val/test
+        summ_attn_mask = None
+        if bsz * n_summary > 1 and self.training:
+            summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
+
+        if self.training: # in validation and test we will generate only one summary + if batching is needed in training
+            decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
+
+
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        """"""""""""""""""""" Section encoding """"""""""""""""""""""""
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+
+        if encoder_section_outputs is None:
+            section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
+            section_pre_encodings = torch.index_select(encoder_outputs[0], 1, section_token_indices)
+
+        if topic_model_section_outputs is None:
+            reshp = src_bow_section.shape
+            prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct, \
+            posterior_log_variance_sct, word_dists_sct, estimated_labels_sct, topic_emb_sct = self.topic_model(
+                src_bow_section.view(-1, self.top_words_dim), section_pre_encodings.view(-1, self.config.d_model), labels=None)
+            reshaped = [posterior_mean_sct, posterior_variance_sct, posterior_log_variance_sct, word_dists_sct,
+                        topic_emb_sct]
+            posterior_mean_sct, posterior_variance_sct, posterior_log_variance_sct, \
+            word_dists_sct, topic_emb_sct = [v.view(reshp[0], reshp[1], -1) for v in reshaped]
+
+        else:
+            prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct, \
+            posterior_log_variance_sct, word_dists_sct, estimated_labels_sct, topic_emb_sct = topic_model_section_outputs
+
+        if encoder_section_outputs is None:
+            section_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
+            encoder_section_outputs = self.encoder_section(hidden_states=section_pre_encodings, topic_emb=topic_emb_sct.unsqueeze(0), attention_mask=section_mask)[0]
+
+        else:
+            # encoder_section_outputs is not none.
+            section_mask = torch.BoolTensor([True] * encoder_section_outputs.size(1)).unsqueeze(0).repeat(encoder_section_outputs.size(0), 1).cuda()
 
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
-            topic_vec_ge=topic_vec_ge,
-            # topic_vec_ge=topic_emb,
+            section_encodings=encoder_section_outputs,
             attention_mask=decoder_attention_mask,
+            encoder_attention_mask_section=section_mask,
             summ_attn_mask=summ_attn_mask,
             encoder_hidden_states=encoder_outputs[0],
             encoder_attention_mask=attention_mask,
@@ -1202,6 +1247,7 @@ class TGSumModel(LEDModel):
         return LEDSeq2SeqModelOutput(
             last_hidden_state=decoder_outputs.last_hidden_state,
             topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
+            topic_info_section=(src_bow_section, word_dists_sct, prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct, posterior_log_variance_sct) if self.use_topic else None,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
@@ -1234,6 +1280,15 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def get_encoder(self):
         return self.led.get_encoder()
 
+    def get_section_encoder(self):
+        return self.led.get_section_encoder()
+
+    def get_topic_model(self):
+        return self.led.get_topic_model()
+
+    def get_topic_fuse(self):
+        return self.led.get_topic_fuse()
+
     def get_decoder(self):
         return self.led.get_decoder()
 
@@ -1259,7 +1314,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
 
     def _topic_loss(self, inputs, word_dists, prior_mean, prior_variance,
-              posterior_mean, posterior_variance, posterior_log_variance):
+              posterior_mean, posterior_variance, posterior_log_variance, is_sct=False):
 
         # KL term
         # var division term
@@ -1272,13 +1327,14 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         logvar_det_division = \
             prior_variance.log().sum() - posterior_log_variance.sum(dim=1)
         # combine terms
-        KL = 0.5 * (
-            var_division + diff_term - self.n_components + logvar_det_division)
 
-        # Reconstruction term
-        RL = -torch.sum(inputs * torch.log(word_dists + 1e-10), dim=1)
+        if not is_sct:
+            KL = 0.5 * (var_division + diff_term - self.n_components + logvar_det_division)
+            RL = -torch.sum(inputs * torch.log(word_dists + 1e-10), dim=1)
+        else:
+            KL = (0.5 * (var_division + diff_term - self.n_components + logvar_det_division)).mean()
+            RL = -(torch.sum(inputs * torch.log(word_dists + 1e-10), dim=2).mean())
 
-        #loss = self.weights["beta"]*KL + RL
 
         return KL, RL
 
@@ -1294,6 +1350,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             decoder_head_mask=None,
             cross_attn_head_mask=None,
             encoder_outputs=None,
+            encoder_section_outputs=None,
+            topic_model_global_outputs=None,
+            topic_model_section_outputs=None,
             past_key_values=None,
             inputs_embeds=None,
             decoder_inputs_embeds=None,
@@ -1303,7 +1362,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             output_hidden_states=None,
             return_dict=None,
             doc_ids=None,
-            step=None,
+            step=None, # for debugging
             split_noise=False,
             global_attention_mask: Optional[torch.FloatTensor] = None,
     ):
@@ -1334,6 +1393,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             decoder_input_ids=decoder_input_ids,
             global_attention_mask=global_attention_mask,
             encoder_outputs=encoder_outputs,
+            encoder_section_outputs=encoder_section_outputs,
+            topic_model_global_outputs=topic_model_global_outputs,
+            topic_model_section_outputs=topic_model_section_outputs,
             decoder_attention_mask=decoder_attention_mask,
             head_mask=head_mask,
             decoder_head_mask=decoder_head_mask,
@@ -1357,28 +1419,39 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         masked_lm_loss = None
         topic_loss = None
         if labels is not None:
+
             loss_fct = CrossEntropyLoss()
             labels = pad_sequence(labels[0], batch_first=True, padding_value=-100).unsqueeze(0).cuda()
+
             masked_lm_loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.view(-1))
             if self.use_topic:
                 source_bow, word_dists, prior_mean, prior_variance, posterior_mean, \
                 posterior_variance, posterior_log_variance = outputs.topic_info
 
+                source_bow_sct, word_dists_sct, prior_mean_sct, prior_variance_sct, posterior_mean_sct, \
+                posterior_variance_sct, posterior_log_variance_sct = outputs.topic_info_section
+
                 # backward pass
-                self.n_components = self.led.n_components
+                self.n_components = self.led.num_topics
                 kl_loss, rl_loss = self._topic_loss(
                     source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance,
                     posterior_log_variance
                 )
+                kl_loss_sct, rl_loss_sct = self._topic_loss(
+                    source_bow_sct, word_dists_sct, prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct,
+                    posterior_log_variance_sct, is_sct=True,
+                )
+
                 # this is gonna be added to the whole loss...
-                topic_loss = (kl_loss + rl_loss).sum()
+                topic_loss = (( (kl_loss + rl_loss) + (kl_loss_sct + rl_loss_sct))/2.0).sum()
 
                 # masked_lm_loss += (0.8) * masked_lm_loss + (0.2) *
 
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
             return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
-
+        # if not self.training:
+        #     import pdb;pdb.set_trace()
         return Seq2SeqLMOutput(
             loss=masked_lm_loss,
             loss_topic=topic_loss if self.use_topic else None,
@@ -1403,6 +1476,10 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             use_cache=None,
             encoder_outputs=None,
             src_bow_global=None,
+            encoder_section_outputs=None,
+            topic_model_global_outputs=None,
+            topic_model_section_outputs=None,
+            src_bow_section=None,
             **kwargs
     ):
         # cut decoder_input_ids if past is used
@@ -1419,6 +1496,10 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             "decoder_head_mask": decoder_head_mask,
             "cross_attn_head_mask": cross_attn_head_mask,
             "src_bow_global": src_bow_global,
+            "src_bow_section": src_bow_section,
+            "encoder_section_outputs": encoder_section_outputs,
+            "topic_model_global_outputs": topic_model_global_outputs,
+            "topic_model_section_outputs": topic_model_section_outputs,
             "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
         }
 
@@ -1574,10 +1655,24 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     pretrained_model_name_or_path, filename=filename, revision=revision, mirror=mirror
                 )
 
+                archive_file_roberta = hf_bucket_url( "roberta-large", filename=filename, revision=revision, mirror=mirror )
+
+
             try:
                 # Load from URL or cache if already cached
                 resolved_archive_file = cached_path(
                     archive_file,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    user_agent=user_agent,
+                )
+
+                resolved_archive_file_roberta = cached_path(
+                    archive_file_roberta,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -1702,6 +1797,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             if not is_sharded and state_dict is None:
                 # Time to load the checkpoint
                 state_dict = load_state_dict(resolved_archive_file)
+                state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
 
             # set dtype to instantiate the model under:
             # 1. If torch_dtype is not None, we use that dtype
@@ -1769,6 +1865,26 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             offload_state_dict=offload_state_dict,
             dtype=torch_dtype,
         )
+
+        added_params = {}
+        for n, p in state_dict.items():
+            if 'encoder_attn.' in n:
+                # import pdb;pdb.set_trace()
+                added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
+            if 'encoder_attn_layer_norm.' in n:
+                # import pdb;pdb.set_trace()
+                added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
+
+        for n, p in state_dict_roberta.items():
+            try:
+                layer_num = int(n.split('roberta.encoder.layer.')[1].split('.')[0])
+                if layer_num >= 20:
+                    added_params[n.replace(f'roberta.encoder.layer.{layer_num}',
+                                           f'led.encoder_section.layer.{layer_num - 20}')] = p
+            except:
+                pass
+
+        state_dict.update(added_params)
 
         # make sure token embedding weights are still tied if needed
         model.tie_weights()
