@@ -1220,6 +1220,7 @@ class TGSumModel(LEDModel):
         if self.training: # in validation and test we will generate only one summary
             decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
 
+        # here
         # pad sequence [bsz, n_summary, dim]
         topic_vec_ge = None
         if self.use_topic:
