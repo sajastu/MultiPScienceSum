@@ -19,6 +19,8 @@
           </mappings>
           <excludedPaths>
             <excludedPath local="true" path="$PROJECT_DIR$/data_processor/mup" />
+            <excludedPath path="/home/sajad/packages/summarization/mup/examples" />
+            <excludedPath path="/home/sajad/packages/summarization/mup/src" />
           </excludedPaths>
         </serverdata>
       </paths>

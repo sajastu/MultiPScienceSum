@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 
 export CUDA_VISIBLE_DEVICES=0,1
+
 USER=$1
 export MODEL_NAME=allenai/led-large-16384-arxiv
+#export MODEL_NAME=allenai/led-base-16384
 export DS_DIR=/disk1/sajad/datasets/sci/mup/hf_format/
+export HF_DATASETS_CACHE=/disk0/$USER/.cache/huggingface
+# 4190
+# 8380
+#python3 -m torch.distributed.launch --nproc_per_node=2 run_summarization.py \
 CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --model_name_or_path $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-TopicAwareEncAttn-test \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-decAttn-6144-2048-hier-sentenceNext \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
     --weight_decay 0.01 \
     --adam_beta2 0.999 \
-    --num_train_epochs 8 \
+    --num_train_epochs 5 \
     --gradient_accumulation_steps 1 \
     --save_total_limit 5 \
     --text_column source \
@@ -22,13 +28,15 @@ CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --predict_with_generate \
     --max_grad_norm 1 \
     --lr_scheduler_type linear \
-    --eval_steps 4150 --save_steps 4150 \
+    --eval_steps 8380 --save_steps 8380 \
     --train_file $DS_DIR/train.parquet \
     --validation_file $DS_DIR/val.parquet \
     --do_train \
     --do_eval \
     --report_to wandb \
-    --run_name mup-led-TopicAwareEncAttn-test
+    --run_name mup-led-arxiv-decAttn-6144-2048-hier-sentenceNext \
+    --max_source_length 6144 \
+    --preprocessing_num_workers 4 \
 
 #    --metric_for_best_model rougeL \
     #    --test_file $DS_DIR/test.reduced.complete.parquet \

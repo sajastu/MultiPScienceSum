@@ -661,7 +661,9 @@ class TGSumTrainer(Seq2SeqTrainer):
         generated_tokens = self.model.generate(
             generation_inputs,
             src_bow_global=inputs['src_bow_global'],
-            src_bow_section=inputs['src_bow_section'],
+            ext_labels=inputs['ext_labels'],
+            section_scores=inputs['section_scores'],
+            section_len=inputs['section_len'],
             doc_ids=inputs['doc_ids'],
             section_token_index=section_idx,
             **gen_kwargs,

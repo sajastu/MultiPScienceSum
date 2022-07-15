@@ -15,10 +15,113 @@ import torch
 
 from transformers.pytorch_utils import torch_int_div
 import torch.distributed as dist
+from torch.nn.utils.rnn import pad_sequence
 
 logger = logging.getLogger(__name__)
 
 class GenerationMixin(GenerationMixin):
+
+    def get_repr_from_index_gen(self, from_tensor, index):
+        return from_tensor[:,index, :]
+
+    def _prepare_reduced_encoder_outputs(self, encoder_outputs, input_ids, section_len):
+
+        # if input_ids[1]
+
+        sent_repr = self.get_repr_from_index_gen(encoder_outputs[0],
+                                             index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
+
+        section_repr = self.get_repr_from_index_gen(encoder_outputs[0],
+                                                index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
+
+        # import pdb;pdb.set_trace()
+        sent_scorer_ln = self.get_sent_scorer()
+        sent_scores = torch.sigmoid(
+            sent_scorer_ln(sent_repr)
+        ).squeeze(-1)
+
+        sect_scorer_ln = self.get_sect_scorer()
+        sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
+                                                  dim=-2).squeeze(-1)
+
+        LIMIT = 2048  # tokens
+        sample_sect_dist = torch.round(
+            torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
+        sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+        end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+
+        sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+        sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True,
+                                               padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
+
+        sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True,
+                                             padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+        sect_sent_mask = (sects_batch_sent_lens > 0).float()
+
+        top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
+
+        top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
+        top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
+
+        sect_sent_n_selects = (~(
+                    (torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(
+                top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
+        top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x],
+                                        padding_value=-1).t()) != -1).cuda()
+        pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
+
+        section_len_cum = torch.cumsum(section_len, dim=-1)
+        shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
+        # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
+        shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
+        pre_idx = (pre_idx + shifted_section_len) * top_sents_mask
+
+        pre_idx = torch.where(pre_idx > 0, sent_real_ids[pre_idx], 10000000)
+        end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:, :, :pre_idx.size(-1)])
+
+        # sort ids
+        pre_idx = pre_idx.sort()[0]
+        end_pre_ids = end_pre_ids.sort()[0]
+
+        sections_sentence_encoding = []
+        selected_sent_embeddings = []
+
+        for l in range(pre_idx.size(1)):
+            # import pdb;
+            # pdb.set_trace()
+
+            section_sent_encoding = []
+            start_idxs = pre_idx[0, l]
+            end_idxs = end_pre_ids[0, l]
+
+            if top_sents_mask[l].float().sum() == 0:
+                continue
+
+            for ll in range(start_idxs.size(-1)):
+                # import pdb;pdb.set_trace()
+                if start_idxs[ll] > 10000000 - 1:
+                    continue
+                try:
+                    sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll] + 1]
+                except:
+                    sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
+
+                selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
+                section_sent_encoding.append(sent_encoding)
+            try:
+                sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
+            except:
+                import pdb;pdb.set_trace()
+        sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
+        selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
+
+        if self.is_hier():
+            hier_encoder = self.get_hier_encoder()
+            selected_sent_embeddings = hier_encoder(selected_sent_embeddings,
+                                                     torch.ones(selected_sent_embeddings.size(0),
+                                                                selected_sent_embeddings.size(1)).bool().cuda())
+
+        return sections_sentence_encoding, selected_sent_embeddings
 
 
     def _prepare_encoder_decoder_kwargs_for_generation(
@@ -26,18 +129,20 @@ class GenerationMixin(GenerationMixin):
     ) -> Dict[str, Any]:
         # 1. get encoder
         encoder = self.get_encoder()
-        encoder_section = self.get_section_encoder()
+        # encoder_section = self.get_section_encoder()
         topic_model = self.get_topic_model()
         fusing_function = self.get_topic_fuse()
 
+
         # 2. prepare encoder args and encoder kwargs from model kwargs
-        irrelevant_prefix = ["decoder_", "cross_attn", "use_cache", "src_bow_global", "src_bow_section", "section_token_index"]
+        irrelevant_prefix = ["decoder_", "cross_attn", "use_cache", "src_bow_global", "ext_labels", "section_token_index", "section_scores", "section_len"]
 
         encoder_kwargs = {
             argument: value
             for argument, value in model_kwargs.items()
             if not any(argument.startswith(p) for p in irrelevant_prefix)
         }
+
 
 
         # 3. make sure that encoder returns `ModelOutput`
@@ -50,12 +155,20 @@ class GenerationMixin(GenerationMixin):
         section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1,section_token_index.cuda()).cuda()
         model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], section_pre_encodings.mean(dim=1))
         model_kwargs["encoder_outputs"].last_hidden_state = fusing_function(model_kwargs["topic_model_global_outputs"][-1], encoder_kwargs['attention_mask'].size(1), model_kwargs["encoder_outputs"].last_hidden_state )
+        model_kwargs["sections_sentence_encoding"], model_kwargs["selected_sent_embeddings"] = self._prepare_reduced_encoder_outputs(model_kwargs["encoder_outputs"],
+                                                                                                                                     encoder_kwargs['input_ids'],
+                                                                                                                                     model_kwargs['section_len'],
+                                                                                                 )
+
+        # prepare sentence embeddings
+
+
         # import pdb;pdb.set_trace()
 
 
-        model_kwargs["topic_model_section_outputs"] = topic_model(model_kwargs['src_bow_section'].squeeze(0), section_pre_encodings.squeeze(0))
-        gen_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
-        model_kwargs["encoder_outputs_section"]: ModelOutput = encoder_section(section_pre_encodings, model_kwargs["topic_model_section_outputs"][-1], gen_mask)
+        # model_kwargs["topic_model_section_outputs"] = topic_model(model_kwargs['src_bow_section'].squeeze(0), section_pre_encodings.squeeze(0))
+        # gen_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
+        # model_kwargs["encoder_outputs_section"]: ModelOutput = encoder_section(section_pre_encodings, model_kwargs["topic_model_section_outputs"][-1], gen_mask)
 
         return model_kwargs
 
@@ -67,6 +180,8 @@ class GenerationMixin(GenerationMixin):
             attention_mask: Optional[torch.LongTensor] = None,
             encoder_outputs: Optional[ModelOutput] = None,
             encoder_outputs_section: Optional[ModelOutput] = None,
+            selected_sent_embeddings: Optional[ModelOutput] = None,
+            sections_sentence_encoding: Optional[ModelOutput] = None,
             **model_kwargs,
     ) -> Tuple[torch.LongTensor,  Dict[str, Any]]:
         expanded_return_idx = (
@@ -78,9 +193,6 @@ class GenerationMixin(GenerationMixin):
             src_bow = model_kwargs["src_bow_global"]
             model_kwargs["src_bow_global"] = src_bow.index_select(0, expanded_return_idx)
 
-        if "src_bow_section" in model_kwargs:
-            src_bow_section = model_kwargs["src_bow_section"]
-            model_kwargs["src_bow_section"] = src_bow_section.index_select(0, expanded_return_idx)
 
         if "token_type_ids" in model_kwargs:
             token_type_ids = model_kwargs["token_type_ids"]
@@ -98,8 +210,11 @@ class GenerationMixin(GenerationMixin):
             model_kwargs["encoder_outputs"] = encoder_outputs[0].index_select(
                 0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
 
-            model_kwargs["encoder_section_outputs"] = encoder_outputs_section.index_select(
-                0, expanded_return_idx.to(encoder_outputs_section.device))
+            model_kwargs["selected_sent_embeddings"] = selected_sent_embeddings.index_select(
+                0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
+
+            model_kwargs["sections_sentence_encoding"] = sections_sentence_encoding.index_select(
+                0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
 
         return input_ids, model_kwargs
 
@@ -107,8 +222,9 @@ class GenerationMixin(GenerationMixin):
             self,
             inputs: Optional[torch.Tensor] = None,
             src_bow_global=None,
-            src_bow_section=None,
             doc_ids=None,
+            ext_labels=None,
+            section_scores=None,
             section_token_index=None,
             max_length: Optional[int] = None,
             min_length: Optional[int] = None,
@@ -197,7 +313,8 @@ class GenerationMixin(GenerationMixin):
         model_kwargs["output_hidden_states"] = output_hidden_states
         model_kwargs["use_cache"] = use_cache
         model_kwargs["src_bow_global"] = src_bow_global
-        model_kwargs["src_bow_section"] = src_bow_section
+        model_kwargs["ext_labels"] = ext_labels
+        model_kwargs["section_scores"] = section_scores
         # model_kwargs["doc_ids"] = doc_ids
 
         accepts_attention_mask = "attention_mask" in set(inspect.signature(self.forward).parameters.keys())
@@ -313,7 +430,6 @@ class GenerationMixin(GenerationMixin):
 
             # 11. interleave input_ids with `num_beams` additional sequences per batch
             model_kwargs["src_bow_global"] = src_bow_global
-            model_kwargs["src_bow_section"] = src_bow_section
 
             input_ids, model_kwargs = self._expand_inputs_for_generation(
                 input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
@@ -408,8 +524,6 @@ class GenerationMixin(GenerationMixin):
 
         this_peer_finished = False  # used by synced_gpus only
 
-        import numpy as np
-
         while True:
 
             if synced_gpus:
@@ -426,6 +540,9 @@ class GenerationMixin(GenerationMixin):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
 
             # model_inputs['src_bow'] = src_bow
+            # import pdb;
+            # pdb.set_trace()
+
             outputs = self(
                 **model_inputs,
                 return_dict=True,
@@ -530,8 +647,6 @@ class GenerationMixin(GenerationMixin):
                 else:
                     this_peer_finished = True
 
-
-        import numpy as np
 
         sequence_outputs = beam_scorer.finalize(
             input_ids,

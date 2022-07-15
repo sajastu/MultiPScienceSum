@@ -997,6 +997,13 @@ class TGSumModel(LEDModel):
         super().__init__(config)
 
         padding_idx, vocab_size = config.pad_token_id, config.vocab_size
+
+        self.sent_scorer = nn.Linear(config.d_model, 1)
+        self.Sigmoid = nn.Sigmoid()
+
+        self.sect_scorer = nn.Linear(config.d_model, 1)
+        self.Softmax =  nn.Softmax()
+
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
 
         self.encoder = LEDEncoder(config, self.shared)
@@ -1161,7 +1168,9 @@ class TGSumModel(LEDModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         src_bow_global=None,
-        summ_bow=None,
+        ext_labels=None,
+        section_scores=None,
+        section_len=None,
         doc_ids=None,
         attention_mask: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.LongTensor] = None,
@@ -1210,6 +1219,38 @@ class TGSumModel(LEDModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
+
+            """"
+                ext labels and section scores
+            """
+            sent_repr = self.get_repr_from_index(encoder_outputs[0], index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
+            section_repr = self.get_repr_from_index(encoder_outputs[0], index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
+
+            sent_scores = self.Sigmoid(
+                self.sent_scorer(sent_repr)
+            )
+            sect_scores = self.Softmax(
+                self.sect_scorer(section_repr)
+            )
+
+            LIMIT = 4096  # tokens
+            sample_sect_dist = torch.tensor(
+                [LIMIT] * (input_ids[0][input_ids[0] == self.BOSECT_ID].shape(0))) * sect_scores
+
+            """
+
+                should find the 
+
+                    "sentence length": length of each sentence 
+                    "section sent len" number of sentences in each section
+
+                Can add code in tokenization step...
+
+            """
+            torch.split(sent_scores, )
+
+
+
         # If the user passed a tuple for encoder_outputs, we wrap it in a LEDEncoderBaseModelOutput when return_dict=False
         elif return_dict and not isinstance(encoder_outputs, LEDEncoderBaseModelOutput):
             encoder_outputs = LEDEncoderBaseModelOutput(
@@ -1220,11 +1261,11 @@ class TGSumModel(LEDModel):
             )
 
         bsz = 1
-        if summ_bow is not None:
-            n_summary = len(summ_bow[0])
-            summ_bow = pad_sequence(summ_bow[0], batch_first=True, padding_value=0).unsqueeze(0)
-        else:
-            n_summary = 1
+        # if summ_bow is not None:
+        #     n_summary = len(summ_bow[0])
+        #     summ_bow = pad_sequence(summ_bow[0], batch_first=True, padding_value=0).unsqueeze(0)
+        # else:
+        #     n_summary = 1
         # only bsz=1 is supported...
 
         summ_attn_mask = None
@@ -1361,7 +1402,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             self,
             input_ids=None,
             src_bow_global=None,
-            summ_bow=None,
+            ext_labels=None,
+            section_scores=None,
+            section_len=None,
             attention_mask=None,
             decoder_input_ids=None,
             decoder_attention_mask=None,
@@ -1405,7 +1448,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         outputs = self.led(
             input_ids,
             src_bow_global=src_bow_global,
-            summ_bow=summ_bow,
+            ext_labels=ext_labels,
+            section_scores=section_scores,
+            section_len=section_len,
             attention_mask=attention_mask,
             decoder_input_ids=decoder_input_ids,
             global_attention_mask=global_attention_mask,

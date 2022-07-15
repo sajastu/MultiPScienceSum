@@ -86,26 +86,21 @@ def cal_rouge(evaluated_ngrams, reference_ngrams):
 
 
 def greedy_selection(doc, abstract, summary_size):
-
-    """
-
-
-
-    """
-
     def _rouge_clean(s):
         return re.sub(r'[^a-zA-Z0-9 ]', '', s)
 
     max_rouge = 0.0
     # abstract = sum(abstract_sent_list, [])
-    abstract = _rouge_clean(abstract).split()
-    doc_sents = list(map(lambda x: x["original_txt"], doc))
+
+    abstract = list(chain.from_iterable(get_sentence_tokens(_rouge_clean(abstract))))
+    doc_sents = doc
 
     sents = [_rouge_clean(' '.join(s)).split() for s in doc_sents]
     evaluated_1grams = [_get_word_ngrams(1, [sent]) for sent in sents]
     reference_1grams = _get_word_ngrams(1, [abstract])
     evaluated_2grams = [_get_word_ngrams(2, [sent]) for sent in sents]
     reference_2grams = _get_word_ngrams(2, [abstract])
+    bin_labels = []
 
     selected = []
     for s in range(summary_size):
@@ -126,11 +121,25 @@ def greedy_selection(doc, abstract, summary_size):
                 cur_max_rouge = rouge_score
                 cur_id = i
         if (cur_id == -1):
-            return selected
+
+            for idx in range(len(doc_sents)):
+                if idx in selected:
+                    bin_labels.append(1)
+                else:
+                    bin_labels.append(0)
+
+            return bin_labels
         selected.append(cur_id)
         max_rouge = cur_max_rouge
 
-    return sorted(selected)
+
+    for idx in range(len(doc_sents)):
+        if idx in selected:
+            bin_labels.append(1)
+        else:
+            bin_labels.append(0)
+
+    return bin_labels
 
 class BertData():
     def __init__(self, args):
@@ -244,7 +253,7 @@ def topic_summ_info_generate(dialogue, ex_labels):
     return {"all": all_counter}
 
 
-def format_to_lines(args, corpus_type=None, create_jsons=True):
+def format_to_lines(args, corpus_type=None, create_jsons=False):
     # write json files
     written_insts = 0
 
@@ -268,10 +277,10 @@ def format_to_lines(args, corpus_type=None, create_jsons=True):
 
     print(f'Written instances: {written_insts}')
 
-    format_to_bert(args, corpus_type)
+    format_to_bert(args)
 
 
-def format_to_bert(args, corpus_type=None):
+def format_to_bert(args):
 
     # writing aggregated json files...
 
@@ -284,7 +293,7 @@ def format_to_bert(args, corpus_type=None):
     # get val and train...
     for json_f in glob.glob(args.jsons_path + f'/' + '*.json'):
         real_name = json_f.split('/')[-1]
-        a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
+        a_lst.append((json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
 
     # constrain data size...
     # a_lst = [a_lst[0]]
@@ -335,7 +344,8 @@ def get_sentence_tokens(text):
         sent = []
         for tkn in doc_sentence:
             sent.append(tkn.text)
-        ret.append(sent)
+        if len(sent) > 0:
+            ret.append(sent)
     return ret
 
 
@@ -346,6 +356,8 @@ def _mp_process_instance(params):
     for index, paper_info in enumerate(paper_jobj['sections_txt_tokenized']):
         sections_txt_tokenized = paper_info
         paper_id = paper_jobj['paper_id']
+        summaries = paper_jobj['summaries']
+        # import pdb;pdb.set_trace()
         section_text, section_tokens = sections_txt_tokenized['text'].replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '') \
                               .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
                               .replace('\n', ' ').strip(), sections_txt_tokenized['tokenized']
@@ -355,8 +367,8 @@ def _mp_process_instance(params):
 
     sect_idx = 0
     hyp_sections = []
+    hyp_sections_token_sents = []
     hyp_sections_txt = []
-
     while sect_idx < len(sections_tokens):
         sect_tokens = sections_tokens[sect_idx][1]
         s_idx = sect_idx
@@ -375,15 +387,18 @@ def _mp_process_instance(params):
                 combined_sect = [list(chain.from_iterable(s[1])) for s in sections_tokens[s_idx:sect_idx+1]]
                 combined_sect_txt = [s[0] for s in sections_tokens[s_idx:sect_idx+1]]
                 hyp_sections.append((f'{s_idx}-{sect_idx}', list(chain.from_iterable(combined_sect))))
+                hyp_sections_token_sents.append((f'{s_idx}-{sect_idx}', combined_sect))
                 hyp_sections_txt.append(" ".join(combined_sect_txt))
             elif sect_idx == len(sections_tokens) -1 :
                 hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[-1][1]))))
+                hyp_sections_token_sents.append((f'{s_idx}', chain.from_iterable(sections_tokens[-1][1])))
                 combined_sect_txt = sections_tokens[s_idx][0]
                 # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
 
                 hyp_sections_txt.append(combined_sect_txt)
             else:
                 hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[s_idx][1]))))
+                hyp_sections_token_sents.append((f'{s_idx}', sections_tokens[s_idx][1]))
                 combined_sect_txt = sections_tokens[s_idx][0]
                 # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
                 # import pdb;pdb.set_trace()
@@ -391,30 +406,43 @@ def _mp_process_instance(params):
 
         else:
             hyp_sections.append((f'{sect_idx}', list(chain.from_iterable(sect_tokens))))
+            hyp_sections_token_sents.append((f'{sect_idx}', sect_tokens))
             combined_sect_txt = sections_tokens[sect_idx][0]
             # combined_sect_txt = list(chain.from_iterable(combined_sect_txt))
             hyp_sections_txt.append(combined_sect_txt)
         sect_idx += 1
     sect_boundaries = [h[0] for h in hyp_sections]
     hyp_sections = [h[1] for h in hyp_sections]
+    hyp_sections_token_sents = [h[1] for h in hyp_sections_token_sents]
 
-
+    ext_labels = []
+    sections_sents = []
 
     for sec_id, sect_tokens in enumerate(hyp_sections):
         ids = [voc_wrapper.w2i(x.lower()) for x in sect_tokens]
         tokenized_id = [x for x in ids if x is not None]
-
         for id in tokenized_id:
             if id > voc_wrapper.voc_size():
                 print('id is larger than vocab size...')
 
+        section_sents = get_sentence_tokens(' '.join(sect_tokens))
+        sections_sents.append([' '.join(s) for s in section_sents if len(' '.join(s).strip()) > 0].copy())
+
+        section_ext_labels = []
+        for summary in summaries:
+            ext_labels_section_summary = greedy_selection(section_sents, summary, 10)
+            section_ext_labels.append(ext_labels_section_summary)
+        ext_labels.append(section_ext_labels.copy())
+
         b_data_dict["tokenized_ids"].append(tokenized_id)
 
-
+    assert len(ext_labels) == len(sections_sents), 'discep found'
     dialogue_example = {
         'paper_id': paper_id,
         'section_boundaries': sect_boundaries,
         "section_text": hyp_sections_txt,
+        "sections_sents": sections_sents,
+        "ext_labels": ext_labels,
     }
 
     topic_info_section, topic_info_global = topic_info_generate(b_data_dict)
@@ -428,7 +456,7 @@ def _mp_process_instance(params):
 
 def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapper):
 
-    _, json_file, args, save_file = params
+    json_file, args, save_file = params
 
     logger.info('Processing %s' % json_file)
     jobs = json.load(open(json_file))

@@ -136,7 +136,8 @@ class LEDSeq2SeqModelOutput(ModelOutput):
 
     last_hidden_state: torch.FloatTensor = None
     topic_info: Any = None
-    topic_info_section: Any = None
+    sect_scores: Any = None
+    sent_scores: Any = None
     past_key_values: Optional[List[torch.FloatTensor]] = None
     decoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     decoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -641,17 +642,16 @@ class TGSumDecoderLayer(nn.Module):
             cross_attn_past_key_value_word = past_key_value[2:4] if past_key_value is not None else None
             cross_attn_past_key_value_section = past_key_value[4:] if past_key_value is not None else None
 
-
-
             hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
-            self.encoder_attn_section(
-                hidden_states=hidden_states,  # decoder query
-                key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
-                attention_mask=encoder_attention_mask_section,
-                layer_head_mask=cross_attn_layer_head_mask,
-                past_key_value=cross_attn_past_key_value_section,
-                output_attentions=output_attentions,
-            )
+                self.encoder_attn_section(
+                    hidden_states=hidden_states,  # decoder query
+                    key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1,
+                                                                    1) if self.training else section_encoder_outputs,
+                    attention_mask=encoder_attention_mask_section,
+                    layer_head_mask=cross_attn_layer_head_mask,
+                    past_key_value=cross_attn_past_key_value_section,
+                    output_attentions=output_attentions,
+                )
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
             hidden_states = residual + hidden_states
             hidden_states = self.encoder_attn_layer_norm_section(hidden_states)
@@ -659,9 +659,8 @@ class TGSumDecoderLayer(nn.Module):
             hidden_states, cross_attn_weights_word, cross_attn_present_key_value_word = \
                 self.encoder_attn(
                     hidden_states=hidden_states,  # decoder query
-                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1,
-                                                                  1) if self.training else encoder_hidden_states.unsqueeze(
-                        0).repeat(encoder_attention_mask.size(0), 1, 1),
+                    # key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states.unsqueeze(0).repeat(encoder_attention_mask.size(0), 1, 1),
+                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states,
                     attention_mask=encoder_attention_mask,
                     layer_head_mask=cross_attn_layer_head_mask,
                     past_key_value=cross_attn_past_key_value_word,
@@ -670,6 +669,8 @@ class TGSumDecoderLayer(nn.Module):
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
             hidden_states = residual + hidden_states
             hidden_states = self.encoder_attn_layer_norm(hidden_states)
+
+
 
             present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_section
             # present_key_value = present_key_value + cross_attn_present_key_value_word
@@ -723,7 +724,7 @@ class TGSumDecoder(LEDDecoder):
         self.layers = nn.ModuleList([TGSumDecoderLayer(config, use_topic=use_topic, k=idx) for idx in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
-        self.gradient_checkpointing = True
+        self.gradient_checkpointing = False
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -876,7 +877,10 @@ class TGSumDecoder(LEDDecoder):
                     # encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section, inputs_embeds.dtype, tgt_len=input_shape[-1])
 
                 else:
-                    encoder_attention_mask = _expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    try:
+                        encoder_attention_mask = _expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    except:
+                        import pdb;pdb.set_trace()
                     encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
 
 
@@ -997,6 +1001,11 @@ class TGSumModel(LEDModel):
         # self.base_model_prefix = 'led'
         super().__init__(config)
 
+
+        self.sent_scorer = nn.Linear(config.d_model, 1)
+        self.sect_scorer = nn.Linear(config.d_model, 1)
+
+
         padding_idx, vocab_size = config.pad_token_id, config.vocab_size
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
 
@@ -1011,11 +1020,14 @@ class TGSumModel(LEDModel):
         self.use_topic = use_topic
 
         #### TOPIC MODELING
-        topic_emb_size = 100
+        topic_emb_size = 300
         self.top_words_dim = 3000
-        self.encoder_section = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
-                                               dropout=0.2, num_inter_layers=2, topic_dim=topic_emb_size)
-        self.num_topics = 50
+
+        self.is_hier = True
+        if self.is_hier:
+            self.hier_encoder = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
+                                               dropout=0.2, num_inter_layers=2)
+        self.num_topics = 100
         self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
                                           infnet='combined', n_components=self.num_topics, model_type='prodLDA',
                                           hidden_sizes=(100, 100), activation='softplus',
@@ -1028,8 +1040,8 @@ class TGSumModel(LEDModel):
             self._set_parameter_linear(p)
         for p in self.topic_emb_linear.parameters():
             self._set_parameter_linear(p)
-        for module in self.encoder_section.modules():
-            self._set_parameter_tf(module)
+        # for module in self.encoder_section.modules():
+        #     self._set_parameter_tf(module)
 
     def _set_parameter_linear(self, p):
         if p.dim() > 1:
@@ -1055,7 +1067,10 @@ class TGSumModel(LEDModel):
         topic_vec = topic_emb.unsqueeze(1).expand(bsz, max_len, -1)
         mapped_vec = vec
 
-        gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
+        try:
+            gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
+        except:
+            import pdb;pdb.set_trace()
         fused_vec = (1 - gate) * self.topic_emb_linear(topic_vec) + gate * mapped_vec
 
         return fused_vec
@@ -1072,8 +1087,17 @@ class TGSumModel(LEDModel):
     def get_encoder(self):
         return self.encoder
 
-    def get_section_encoder(self):
-        return self.encoder_section
+    def is_hier(self):
+        return self.is_hier
+
+    def get_hier_encoder(self):
+        return self.hier_encoder
+
+    def get_sent_scorer(self):
+        return self.sent_scorer
+
+    def get_sect_scorer(self):
+        return self.sect_scorer
 
     def get_topic_model(self):
         return self.topic_model
@@ -1084,13 +1108,20 @@ class TGSumModel(LEDModel):
     def get_decoder(self):
         return self.decoder
 
+    def get_repr_from_index(self, from_tensor, index):
+        return from_tensor[:,index, :]
+
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         src_bow_global=None,
         src_bow_section=None,
         doc_ids=None,
+        section_len=None,
+        sent_len=None,
         step=None,
+        sections_sentence_encoding=None,
+        selected_sent_embeddings=None,
         topic_model_outputs=None,
         section_token_index=None,
         encoder_section_outputs=None,
@@ -1112,9 +1143,12 @@ class TGSumModel(LEDModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple[torch.Tensor], LEDSeq2SeqModelOutput]:
+
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -1158,7 +1192,107 @@ class TGSumModel(LEDModel):
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
                 global_attentions=encoder_outputs[3] if len(encoder_outputs) > 3 else None,
-        )
+            )
+
+        """"""""""""""""""""""""""""""""""""""""""""""""""""
+                    ext labels and section scores
+        """""""""""""""""""""""""""""""""""""""""""""""""""
+
+        sent_scores = None
+        sect_scores = None
+        if sections_sentence_encoding is None:
+            sent_repr = self.get_repr_from_index(encoder_outputs[0],
+                                                     index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
+
+            section_repr = self.get_repr_from_index(encoder_outputs[0],
+                                                    index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
+
+            sent_scores = torch.sigmoid(
+                self.sent_scorer(sent_repr)
+            ).squeeze(-1)
+
+            sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
+
+
+            LIMIT = 2048  # tokens
+            sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
+
+            sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+            end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+
+            try:
+                sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+            except:
+                print('found noncons')
+                # import pdb;pdb.set_trace()
+
+            try:
+                sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True, padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            except Exception as ee:
+                print(ee)
+                print(doc_ids)
+
+            sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            sect_sent_mask = (sects_batch_sent_lens > 0).float()
+
+            top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
+
+            top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
+            top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
+
+            sect_sent_n_selects = (~((torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
+            top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x], padding_value=-1).t()) != -1).cuda()
+            pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
+
+            section_len_cum = torch.cumsum(section_len, dim=-1)
+            shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
+            # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
+            shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
+            pre_idx = (pre_idx + shifted_section_len) * top_sents_mask
+
+            pre_idx = torch.where(pre_idx > 0, sent_real_ids[pre_idx], 10000000)
+            end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:,:,:pre_idx.size(-1)])
+
+            # sort ids
+            pre_idx = pre_idx.sort()[0]
+            end_pre_ids = end_pre_ids.sort()[0]
+
+            sections_sentence_encoding = []
+            selected_sent_embeddings = []
+
+            for l in range(pre_idx.size(1)):
+                # import pdb;
+                # pdb.set_trace()
+                if top_sents_mask[l].float().sum() == 0:
+                    continue
+                section_sent_encoding = []
+                start_idxs = pre_idx[0, l]
+                end_idxs = end_pre_ids[0, l]
+
+                for ll in range(start_idxs.size(-1)):
+                    # import pdb;pdb.set_trace()
+
+                    if start_idxs[ll] > 10000000 - 1:
+                        continue
+                    try:
+                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]+1]
+                    except:
+                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
+
+                    selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
+                    section_sent_encoding.append(sent_encoding)
+                try:
+                    sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
+                except:
+                    import pdb;pdb.set_trace()
+
+            sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
+            selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
+
+            if self.is_hier:
+                selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
+                                                         torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
+
 
         if topic_model_global_outputs is None:
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
@@ -1173,7 +1307,6 @@ class TGSumModel(LEDModel):
         """""
         
         """
-
 
         bsz = 1
 
@@ -1197,40 +1330,28 @@ class TGSumModel(LEDModel):
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 
-        if encoder_section_outputs is None:
-            section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
-            section_pre_encodings = torch.index_select(encoder_outputs[0], 1, section_token_indices)
+        # if encoder_section_outputs is None:
+        #     section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
+        #     section_pre_encodings = torch.index_select(encoder_outputs[0], 1, section_token_indices)
+        #
+        # if encoder_section_outputs is None:
+        #     section_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
+        ##     encoder_section_outputs = self.encoder_section(hidden_states=section_pre_encodings, topic_emb=topic_emb_sct.unsqueeze(0), attention_mask=section_mask)[0]
+        #
+        # else:
+        ##     encoder_section_outputs is not none.
+            # section_mask = torch.BoolTensor([True] * encoder_section_outputs.size(1)).unsqueeze(0).repeat(encoder_section_outputs.size(0), 1).cuda()
 
-        if topic_model_section_outputs is None:
-            reshp = src_bow_section.shape
-            prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct, \
-            posterior_log_variance_sct, word_dists_sct, estimated_labels_sct, topic_emb_sct = self.topic_model(
-                src_bow_section.view(-1, self.top_words_dim), section_pre_encodings.view(-1, self.config.d_model), labels=None)
-            reshaped = [posterior_mean_sct, posterior_variance_sct, posterior_log_variance_sct, word_dists_sct,
-                        topic_emb_sct]
-            posterior_mean_sct, posterior_variance_sct, posterior_log_variance_sct, \
-            word_dists_sct, topic_emb_sct = [v.view(reshp[0], reshp[1], -1) for v in reshaped]
-
-        else:
-            prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct, \
-            posterior_log_variance_sct, word_dists_sct, estimated_labels_sct, topic_emb_sct = topic_model_section_outputs
-
-        if encoder_section_outputs is None:
-            section_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
-            encoder_section_outputs = self.encoder_section(hidden_states=section_pre_encodings, topic_emb=topic_emb_sct.unsqueeze(0), attention_mask=section_mask)[0]
-
-        else:
-            # encoder_section_outputs is not none.
-            section_mask = torch.BoolTensor([True] * encoder_section_outputs.size(1)).unsqueeze(0).repeat(encoder_section_outputs.size(0), 1).cuda()
-
+        # if not self.training:
+        #     import pdb;pdb.set_trace()
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
-            section_encodings=encoder_section_outputs,
+            section_encodings=selected_sent_embeddings.cuda(),
             attention_mask=decoder_attention_mask,
-            encoder_attention_mask_section=section_mask,
+            encoder_attention_mask_section=torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda(),
             summ_attn_mask=summ_attn_mask,
-            encoder_hidden_states=encoder_outputs[0],
-            encoder_attention_mask=attention_mask,
+            encoder_hidden_states=sections_sentence_encoding.cuda(),
+            encoder_attention_mask=torch.ones(sections_sentence_encoding.size(0), sections_sentence_encoding.size(1)).cuda(),
             head_mask=decoder_head_mask,
             cross_attn_head_mask=cross_attn_head_mask,
             past_key_values=past_key_values,
@@ -1247,8 +1368,9 @@ class TGSumModel(LEDModel):
         return LEDSeq2SeqModelOutput(
             last_hidden_state=decoder_outputs.last_hidden_state,
             topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
-            topic_info_section=(src_bow_section, word_dists_sct, prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct, posterior_log_variance_sct) if self.use_topic else None,
             past_key_values=decoder_outputs.past_key_values,
+            sent_scores=sent_scores if sent_scores is not None else None,
+            sect_scores=sect_scores if sect_scores is not None else None,
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
@@ -1280,8 +1402,17 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def get_encoder(self):
         return self.led.get_encoder()
 
-    def get_section_encoder(self):
-        return self.led.get_section_encoder()
+    def is_hier(self):
+        return self.led.is_hier
+
+    def get_sent_scorer(self):
+        return self.led.get_sent_scorer()
+
+    def get_sect_scorer(self):
+        return self.led.get_sect_scorer()
+
+    def get_hier_encoder(self):
+        return self.led.get_hier_encoder()
 
     def get_topic_model(self):
         return self.led.get_topic_model()
@@ -1338,11 +1469,48 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
         return KL, RL
 
+    def _convert_2d_labels_to_tensor(self, ext_labels, section_scores):
+
+        # removing batch
+        try:
+            ext_labels_tensor = [[] for _ in range(len(ext_labels[0][0]))]
+        except:
+            import pdb;pdb.set_trace()
+
+        for ext_labels_batch in ext_labels:
+            for sect_labels in ext_labels_batch:
+                for j, sum_sec_label in enumerate(sect_labels):
+                    ext_labels_tensor[j].extend(sum_sec_label.cpu().numpy().tolist())
+
+
+        ext_labels_tensor_ret = [torch.Tensor(ext_label_tensor).cuda() for ext_label_tensor in ext_labels_tensor]
+
+        section_scores_tensor = [[] for _ in range(len(section_scores[0][0]))]
+
+        for section_scores_batch in section_scores:
+            for sect_scores in section_scores_batch:
+                for j, sum_sec_label in enumerate(sect_scores):
+                    section_scores_tensor[j].append(sum_sec_label.item())
+
+        section_scores_tensor_ret = [torch.Tensor(x).cuda() for x in section_scores_tensor]
+
+        # section_scores_tensor = torch.Tensor(section_scores_tensor).cuda()
+        # import pdb;pdb.set_trace()
+        # section_scores_tensor = [torch.Tensor(section_score_tensor).cuda() for section_score_tensor_batch in section_scores_tensor]
+
+        return ext_labels_tensor_ret, section_scores_tensor_ret
+
     def forward(
             self,
             input_ids=None,
             src_bow_global=None,
-            src_bow_section=None,
+            # src_bow_section=None,
+            ext_labels=None,
+            section_scores=None,
+            section_len=None,
+            sent_len=None,
+            sections_sentence_encoding=None,
+            selected_sent_embeddings=None,
             attention_mask=None,
             decoder_input_ids=None,
             decoder_attention_mask=None,
@@ -1373,6 +1541,11 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
         Returns:
         """
+
+        ext_labels, section_scores = self._convert_2d_labels_to_tensor(ext_labels, section_scores)
+
+        # import pdb;pdb.set_trace()
+
         # self.set_split_noise(split_noise)
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         # return_dict = True
@@ -1385,12 +1558,17 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 decoder_input_ids = shift_tokens_right(
                     labels, self.config.pad_token_id, self.config.decoder_start_token_id
                 )
+
         outputs = self.led(
             input_ids,
             src_bow_global=src_bow_global,
-            src_bow_section=src_bow_section,
+            # src_bow_section=src_bow_section,
             attention_mask=attention_mask,
+            section_len=section_len,
+            sent_len=sent_len,
             decoder_input_ids=decoder_input_ids,
+            sections_sentence_encoding=sections_sentence_encoding,
+            selected_sent_embeddings=selected_sent_embeddings,
             global_attention_mask=global_attention_mask,
             encoder_outputs=encoder_outputs,
             encoder_section_outputs=encoder_section_outputs,
@@ -1411,9 +1589,6 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             step=step,
         )
 
-        # import pdb;
-        # pdb.set_trace()
-
         lm_logits = self.lm_head(outputs[0]) + self.final_logits_bias
 
         masked_lm_loss = None
@@ -1421,15 +1596,25 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         if labels is not None:
 
             loss_fct = CrossEntropyLoss()
+            if outputs.sent_scores is not None:
+                loss_sent_fct = nn.BCELoss()
+                loss_sect_fct = nn.MSELoss(reduction='sum')
+
             labels = pad_sequence(labels[0], batch_first=True, padding_value=-100).unsqueeze(0).cuda()
+            if outputs.sent_scores is not None:
+                ext_labels = pad_sequence(ext_labels, batch_first=True, padding_value=-100).unsqueeze(0).cuda()
+                section_scores = pad_sequence(section_scores, batch_first=True, padding_value=-100).unsqueeze(0).cuda()
+
 
             masked_lm_loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.view(-1))
+            if outputs.sent_scores is not None:
+                loss_sent =  loss_sent_fct(outputs.sent_scores.expand_as(ext_labels.squeeze(0)), ext_labels.squeeze(0))
+                loss_sect = loss_sect_fct(outputs.sect_scores.expand_as(section_scores.squeeze(0)), section_scores.squeeze(0))
+                masked_lm_loss += (loss_sent + loss_sect)
+
             if self.use_topic:
                 source_bow, word_dists, prior_mean, prior_variance, posterior_mean, \
                 posterior_variance, posterior_log_variance = outputs.topic_info
-
-                source_bow_sct, word_dists_sct, prior_mean_sct, prior_variance_sct, posterior_mean_sct, \
-                posterior_variance_sct, posterior_log_variance_sct = outputs.topic_info_section
 
                 # backward pass
                 self.n_components = self.led.num_topics
@@ -1437,15 +1622,10 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance,
                     posterior_log_variance
                 )
-                kl_loss_sct, rl_loss_sct = self._topic_loss(
-                    source_bow_sct, word_dists_sct, prior_mean_sct, prior_variance_sct, posterior_mean_sct, posterior_variance_sct,
-                    posterior_log_variance_sct, is_sct=True,
-                )
 
                 # this is gonna be added to the whole loss...
-                topic_loss = (( (kl_loss + rl_loss) + (kl_loss_sct + rl_loss_sct))/2.0).sum()
+                topic_loss = ((kl_loss + rl_loss)).sum()
 
-                # masked_lm_loss += (0.8) * masked_lm_loss + (0.2) *
 
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
@@ -1479,7 +1659,12 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             encoder_section_outputs=None,
             topic_model_global_outputs=None,
             topic_model_section_outputs=None,
-            src_bow_section=None,
+            section_scores=None,
+            ext_labels=None,
+            input_ids=None,
+            src_ids=None,
+            sections_sentence_encoding=None,
+            selected_sent_embeddings=None,
             **kwargs
     ):
         # cut decoder_input_ids if past is used
@@ -1487,16 +1672,19 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             decoder_input_ids = decoder_input_ids[:, -1:]
 
         return {
-            "input_ids": None,  # encoder_outputs is defined. input_ids not needed
+            "input_ids": src_ids,
+            "sections_sentence_encoding": sections_sentence_encoding,
+            "selected_sent_embeddings": selected_sent_embeddings,
             "encoder_outputs": encoder_outputs,
             "past_key_values": past,
             "decoder_input_ids": decoder_input_ids,
             "attention_mask": attention_mask,
             "head_mask": head_mask,
+            "ext_labels": ext_labels,
+            "section_scores": section_scores,
             "decoder_head_mask": decoder_head_mask,
             "cross_attn_head_mask": cross_attn_head_mask,
             "src_bow_global": src_bow_global,
-            "src_bow_section": src_bow_section,
             "encoder_section_outputs": encoder_section_outputs,
             "topic_model_global_outputs": topic_model_global_outputs,
             "topic_model_section_outputs": topic_model_section_outputs,
@@ -1655,7 +1843,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     pretrained_model_name_or_path, filename=filename, revision=revision, mirror=mirror
                 )
 
-                archive_file_roberta = hf_bucket_url( "roberta-large", filename=filename, revision=revision, mirror=mirror )
+                # archive_file_roberta = hf_bucket_url( "roberta-large", filename=filename, revision=revision, mirror=mirror )
 
 
             try:
@@ -1671,16 +1859,16 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     user_agent=user_agent,
                 )
 
-                resolved_archive_file_roberta = cached_path(
-                    archive_file_roberta,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    resume_download=resume_download,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    user_agent=user_agent,
-                )
+                # resolved_archive_file_roberta = cached_path(
+                #     archive_file_roberta,
+                #     cache_dir=cache_dir,
+                #     force_download=force_download,
+                #     proxies=proxies,
+                #     resume_download=resume_download,
+                #     local_files_only=local_files_only,
+                #     use_auth_token=use_auth_token,
+                #     user_agent=user_agent,
+                # )
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
@@ -1797,7 +1985,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             if not is_sharded and state_dict is None:
                 # Time to load the checkpoint
                 state_dict = load_state_dict(resolved_archive_file)
-                state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
+                # state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
 
             # set dtype to instantiate the model under:
             # 1. If torch_dtype is not None, we use that dtype
@@ -1850,6 +2038,27 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         # import pdb;pdb.set_trace()
 
         # import pdb;pdb.set_trace()
+
+
+        added_params = {}
+        for n, p in state_dict.items():
+            if 'encoder_attn.' in n:
+                added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
+            if 'encoder_attn_layer_norm.' in n:
+                # import pdb;pdb.set_trace()
+                added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
+
+        # for n, p in state_dict_roberta.items():
+        #     try:
+        #         layer_num = int(n.split('roberta.encoder.layer.')[1].split('.')[0])
+        #         if layer_num >= 20:
+        #             added_params[n.replace(f'roberta.encoder.layer.{layer_num}',
+        #                                    f'led.encoder_section.layer.{layer_num - 20}')] = p
+        #     except:
+        #         pass
+
+        state_dict.update(added_params)
+
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,
             state_dict,
@@ -1865,26 +2074,6 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             offload_state_dict=offload_state_dict,
             dtype=torch_dtype,
         )
-
-        added_params = {}
-        for n, p in state_dict.items():
-            if 'encoder_attn.' in n:
-                # import pdb;pdb.set_trace()
-                added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
-            if 'encoder_attn_layer_norm.' in n:
-                # import pdb;pdb.set_trace()
-                added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
-
-        for n, p in state_dict_roberta.items():
-            try:
-                layer_num = int(n.split('roberta.encoder.layer.')[1].split('.')[0])
-                if layer_num >= 20:
-                    added_params[n.replace(f'roberta.encoder.layer.{layer_num}',
-                                           f'led.encoder_section.layer.{layer_num - 20}')] = p
-            except:
-                pass
-
-        state_dict.update(added_params)
 
         # make sure token embedding weights are still tied if needed
         model.tie_weights()

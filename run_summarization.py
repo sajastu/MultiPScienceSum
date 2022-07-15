@@ -19,6 +19,7 @@ Fine-tuning the library models for sequence to sequence.
 # You can also adapt this script on your own sequence to sequence task. Pointers for this are left as comments.
 import json
 import logging
+
 import os
 import random
 import sys
@@ -65,6 +66,7 @@ check_min_version("4.20.0")
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
 
 logger = logging.getLogger(__name__)
+transformers.logging.set_verbosity_info()
 
 
 try:
@@ -171,11 +173,13 @@ class DataTrainingArguments:
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
     preprocessing_num_workers: Optional[int] = field(
-        default=4,
+        default=1,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
+    # 7168
+    # 6144
     max_source_length: Optional[int] = field(
-        default=4096,
+        default=6144,
         metadata={
             "help": (
                 "The maximum total input sequence length after tokenization. Sequences longer "
@@ -443,12 +447,21 @@ def main():
 
     model.config = config
 
+    # add <sect> labels...
+    special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
+    tokenizer.add_special_tokens(special_tokens_dict)
+    # intialize word embeddings...
+
     model.resize_token_embeddings(len(tokenizer))
+    model.led.shared.weight.requires_grad = False
+    model.led.shared.weight[-1, :] = model.led.shared.weight[2, :]
+    model.led.shared.weight[-2, :] = model.led.shared.weight[0, :]
+    model.led.shared.weight.requires_grad = True
 
 
     model.config.num_beams = 4
     model.config.max_length = 256
-    model.config.min_length = 150
+    model.config.min_length = 100
     model.config.length_penalty = 1.0
     # model.config.gradient_checkpointing = False
     # model.config.early_stopping = True
@@ -545,33 +558,45 @@ def main():
 
     def preprocess_function(examples):
         # remove pairs where at least one record is None
-        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section = [], [], [], [], [], []
+        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section, ext_labels, section_scores = [], [], [], [], [], [], [], []
         for i in range(len(examples[text_column])):
             if examples[text_column][i] is not None and examples[summary_column][i] is not None:
-                inputs.append([s.replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '')
-                              .replace('<s>', '').replace('</s>', '').replace('<mask>', '')
-                              .replace('\n', ' ').strip().lower() for s in examples[text_column][i]])
+                input_sents = []
+                for sect in examples[text_column][i]:
+                    sent_sects = []
+                    for sent in sect:
+                        sent_sects.append(sent.replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '') \
+                              .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
+                              .replace('\n', ' ').strip().lower())
+                    input_sents.append(' <SENTTT> '.join(sent_sects.copy()))
+
+                inputs.append(input_sents)
                 src_ids.append(examples["paper_id"][i])
                 # if examples["paper_id"][i] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
                 #     import pdb;pdb.set_trace()
                 topic_info_global.append(json.loads(examples["topic_info_global"][i]))
-                topic_info_section.append(json.loads(examples["topic_info_section"][i]))
+                # topic_info_section.append(json.loads(examples["topic_info_section"][i]))
+                ext_labels.append(examples["ext_labels"][i])
+                section_scores.append(examples["section_scores"][i])
 
                 valid_targets = [j for j, e in enumerate(examples[summary_column][i]) if len(e.strip())>0]
 
                 targets.extend([e.strip().lower() for j, e in enumerate(examples[summary_column][i]) if j in valid_targets])
                 tgt_ids.extend(len(valid_targets) * [examples["paper_id"][i]])
 
-        # import pdb;pdb.set_trace()
-        topic_info_tuple = {"topic_info_global": topic_info_global, "topic_info_section": topic_info_section}
+        topic_info_tuple = {"topic_info_global": topic_info_global}
         model_inputs = tokenizer(
             inputs,
             max_length=data_args.max_source_length,
             padding=padding,
             truncation=True,
             doc_ids=src_ids,
-            topic_info_tuple=topic_info_tuple
+            topic_info_tuple=topic_info_tuple,
+            ext_labels=ext_labels,
+            section_scores=section_scores,
          )
+        # import pdb;pdb.set_trace()
+
         # Setup the tokenizer for targets
         with tokenizer.as_target_tokenizer():
             labels = tokenizer(targets, max_length=max_target_length, padding=padding, truncation=True, doc_ids=['tgt-'+t for t in tgt_ids],is_target=True)

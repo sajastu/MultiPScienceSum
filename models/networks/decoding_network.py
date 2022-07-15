@@ -83,7 +83,7 @@ class DecoderNetwork(nn.Module):
         self.beta = nn.Parameter(self.beta)
         nn.init.xavier_uniform_(self.beta)
 
-        self.topic_emb = nn.Parameter(torch.zeros(self.n_components, hidden_sizes[0]))
+        self.topic_emb = nn.Parameter(torch.zeros(self.n_components, hidden_sizes[0]*3))
         # torch.manual_seed(3)
         # self.topic_emb = nn.Embedding(self.n_components, hidden_sizes[0])
         nn.init.uniform_(self.topic_emb, -1.0, 1.0)
