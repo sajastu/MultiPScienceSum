@@ -1232,7 +1232,11 @@ class TGSumModel(LEDModel):
                 print(ee)
                 print(doc_ids)
 
-            sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            try:
+                sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            except:
+                import pdb;pdb.set_trace()
+
             sect_sent_mask = (sects_batch_sent_lens > 0).float()
 
             top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
