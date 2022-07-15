@@ -59,7 +59,7 @@ class GenerationMixin(GenerationMixin):
         sect_sent_mask = (sects_batch_sent_lens > 0).float()
 
         top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
-
+        # test
         top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
         top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
 
