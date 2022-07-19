@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="0e99bc0d-53c9-4bc0-a51d-5f9a6d338d66" name="baolo-dataset">
+        <fileTransfer accessType="SFTP" host="barolo" port="20122" sshConfigId="d77caf20-b31c-4101-ae2f-a703857b4804" sshConfig="sajad@barolo:20122 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

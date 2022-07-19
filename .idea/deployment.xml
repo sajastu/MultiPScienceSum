@@ -2,6 +2,13 @@
 <project version="4">
   <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
+      <paths name="baolo-dataset">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/disk1/sajad/datasets/sci/mup/single_tokenized/" local="$PROJECT_DIR$/mup_dataset" web="/disk1/sajad/datasets/sci/mup/single_tokenized/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="sajad@barolo:20122 (2)">
         <serverdata>
           <mappings>

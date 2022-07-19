@@ -1,6 +1,7 @@
 # encoding=utf-8
 
 import argparse
+import os
 
 from data_processor import data_builder
 from data_processor.others.logging_utils import init_logger
@@ -21,8 +22,8 @@ if __name__ == '__main__':
 
 
     parser.add_argument("-type", default='train', type=str)
-    parser.add_argument("-raw_path", default='/disk1/sajad/datasets/sci/mup/single_tokenized/')
-    parser.add_argument("-save_path", default='/disk1/sajad/datasets/sci/mup/bert_data/')
+    parser.add_argument("-raw_path", default='/disk1/sajad/datasets/sci/mup/single_tokenized_final2/')
+    parser.add_argument("-save_path", default='/disk1/sajad/datasets/sci/mup/bert_data_scores2/')
     parser.add_argument("-jsons_path", default='/disk1/sajad/datasets/sci/mup/jsons/')
     parser.add_argument("-shard_size", default=2000, type=int)
     parser.add_argument("-idlize", nargs='?', const=True, default=False)
@@ -40,16 +41,24 @@ if __name__ == '__main__':
     parser.add_argument("-tokenize", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("-emb_mode", default="word2vec", type=str, choices=["glove", "word2vec"])
     parser.add_argument("-emb_path", default="/disk1/sajad/w2v_embeds/w2v_mup_reduced.emb", type=str)
-    parser.add_argument("-ex_max_token_num", default=500, type=int)
     parser.add_argument("-truncated", nargs='?', const=True, default=False)
     parser.add_argument("-add_ex_label", nargs='?', const=True, default=True)
 
     parser.add_argument('-log_file', default='logs/preprocess.log')
     parser.add_argument('-dataset', default='')
 
+
     args = parser.parse_args()
     if args.type not in ["train", "val", "test"]:
         print("Invalid data type! Data type should be 'train', 'dev', or 'test'.")
         exit(0)
+
     init_logger(args.log_file)
+
+
+    try:
+        os.makedirs(args.save_path)
+    except:
+        pass
+
     data_builder.format_to_lines(args, corpus_type=args.type)

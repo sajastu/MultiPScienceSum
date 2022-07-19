@@ -44,6 +44,7 @@ class TGSumTrainer(Seq2SeqTrainer):
     def __init__(
             self,
             model=None,
+            task=None,
             loading_info=None,
             args=None,
             train_dataset=None,
@@ -54,6 +55,7 @@ class TGSumTrainer(Seq2SeqTrainer):
     ):
 
         self.loading_info = loading_info
+        self.task = task
         super(TGSumTrainer, self).__init__(
             model=model,
             args=args,
@@ -64,7 +66,14 @@ class TGSumTrainer(Seq2SeqTrainer):
             compute_metrics=compute_metrics if args.predict_with_generate else None,
         )
 
+    def is_ext_task(self):
+        return self.task == 'all' or self.task == 'ext'
 
+    def is_topic_task(self):
+        return self.task == 'all' or self.task == 'topic'
+
+    def is_all_task(self):
+        return  self.task == 'all'
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -88,10 +97,12 @@ class TGSumTrainer(Seq2SeqTrainer):
             loss = self.label_smoother(outputs, labels)
         else:
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-            loss_topic = outputs["loss_topic"] if isinstance(outputs, dict) else outputs[1]
+            loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0]) if self.task=='all' else None
+            loss_topic = (outputs["loss_topic"] if isinstance(outputs, dict) else outputs[1]) if self.task=='all' or self.task=='topic' else None
+            sect_loss = (outputs["sect_loss"] if isinstance(outputs, dict) else outputs[2]) if self.task=='all' or self.task == 'ext' else None
+            sent_loss = (outputs["sent_loss"] if isinstance(outputs, dict) else outputs[3]) if self.task=='all' or self.task == 'ext' else None
 
-        return (loss, loss_topic, outputs) if return_outputs else (loss, loss_topic)
+        return (loss, loss_topic, outputs) if return_outputs else (loss, loss_topic, sect_loss, sent_loss)
 
 
     def _inner_training_loop(
@@ -253,8 +264,11 @@ class TGSumTrainer(Seq2SeqTrainer):
 
         # tr_loss is a tensor to avoid synchronization of TPUs through .item()
         tr_loss = torch.tensor(0.0).to(args.device)
+        sect_loss = torch.tensor(0.0).to(args.device)
+        sent_loss = torch.tensor(0.0).to(args.device)
         topic_tr_loss = torch.tensor(0.0).to(args.device)
         lm_tr_loss = torch.tensor(0.0).to(args.device)
+
         # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
@@ -329,30 +343,28 @@ class TGSumTrainer(Seq2SeqTrainer):
                 ):
                     # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
                     with model.no_sync():
-                        tr_loss_step, topic_loss_step, lm_loss_step = self.training_step(model, inputs)
+                        tr_loss_step, topic_loss_step, lm_loss_step, sect_loss_step, sent_loss_step = self.training_step(model, inputs)
                 else:
-                    tr_loss_step, topic_loss_step, lm_loss_step = self.training_step(model, inputs)
+                    tr_loss_step, topic_loss_step, lm_loss_step, sect_loss_step, sent_loss_step = self.training_step(model, inputs)
 
                 if (
                     args.logging_nan_inf_filter
                     and not is_torch_tpu_available()
-                    and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
+                    and (torch.isnan(tr_loss_step))
                 ):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
-                    topic_tr_loss += topic_tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
-                    lm_tr_loss += lm_tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    sect_loss += sect_loss / (1 + self.state.global_step - self._globalstep_last_logged) if self.is_ext_task() else 0
+                    sent_loss += sent_loss / (1 + self.state.global_step - self._globalstep_last_logged) if self.is_ext_task() else 0
+                    topic_tr_loss += topic_tr_loss / (1 + self.state.global_step - self._globalstep_last_logged) if self.is_topic_task() else 0
+                    lm_tr_loss += lm_tr_loss / (1 + self.state.global_step - self._globalstep_last_logged) if self.is_all_task() else 0
                 else:
                     tr_loss += tr_loss_step
-                    topic_tr_loss += topic_loss_step
-                    lm_tr_loss += lm_loss_step
+                    sent_loss += sent_loss_step if self.is_ext_task() else 0
+                    sect_loss += sect_loss_step if self.is_ext_task() else 0
+                    topic_tr_loss += topic_loss_step if self.is_topic_task() else 0
+                    lm_tr_loss += lm_loss_step if self.is_all_task() else 0
 
-                # if tr_loss == 0:
-                    # print('tr_loss==0')
-                    # import pdb;pdb.set_trace()
-
-                # import pdb;
-                # pdb.set_trace()
                 self.current_flos += float(self.floating_point_ops(inputs))
 
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
@@ -416,7 +428,7 @@ class TGSumTrainer(Seq2SeqTrainer):
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    self._maybe_log_save_evaluate(tr_loss, topic_tr_loss, lm_tr_loss, model, trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(tr_loss, topic_tr_loss, lm_tr_loss, sect_loss, sent_loss, model, trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
@@ -431,7 +443,7 @@ class TGSumTrainer(Seq2SeqTrainer):
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, topic_tr_loss, lm_tr_loss, model, trial, epoch, ignore_keys_for_eval)
+            self._maybe_log_save_evaluate(tr_loss, topic_tr_loss, lm_tr_loss, sect_loss, sent_loss, model, trial, epoch, ignore_keys_for_eval)
 
 
             if self.control.should_training_stop:
@@ -470,7 +482,7 @@ class TGSumTrainer(Seq2SeqTrainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
-    def _maybe_log_save_evaluate(self, tr_loss, topic_tr_loss, lm_tr_loss, model, trial, epoch, ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, topic_tr_loss, lm_tr_loss, sect_loss, sent_loss, model, trial, epoch, ignore_keys_for_eval):
         if self.control.should_log:
             if is_torch_tpu_available():
                 xm.mark_step()
@@ -480,20 +492,38 @@ class TGSumTrainer(Seq2SeqTrainer):
             # pdb.set_trace()
             # all_gather + mean() to get average loss over all processes
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
-            tp_tr_loss_scalar = self._nested_gather(topic_tr_loss).mean().item()
-            lm_tr_loss_scalar = self._nested_gather(lm_tr_loss).mean().item()
+            sect_loss_scalar = self._nested_gather(sect_loss).mean().item() if self.is_ext_task() else None
+            sent_loss_scalar = self._nested_gather(sent_loss).mean().item()  if self.is_ext_task() else None
+            tp_tr_loss_scalar = self._nested_gather(topic_tr_loss).mean().item()  if self.is_topic_task() else None
+            lm_tr_loss_scalar = self._nested_gather(lm_tr_loss).mean().item() if self.is_all_task() else None
 
             # reset tr_loss to zero
             tr_loss -= tr_loss
-            topic_tr_loss -= topic_tr_loss
-            lm_tr_loss -= lm_tr_loss
+            sect_loss -= sect_loss if self.is_ext_task() else 0
+            sent_loss -= sent_loss if self.is_ext_task() else 0
+            topic_tr_loss -= topic_tr_loss if self.is_topic_task() else 0
+            lm_tr_loss -= lm_tr_loss if self.is_all_task() else 0
 
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
-            logs["topic_loss"] = round(tp_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
-            logs["lm_loss"] = round(lm_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+
+            if self.is_topic_task():
+                logs["topic_loss"] = round(tp_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+
+            if self.is_all_task():
+                logs["lm_loss"] = round(lm_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+
+            if self.is_ext_task():
+                logs["sent_loss"] = round(sent_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 6)
+                logs["sect_loss"] = round(sect_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 6)
+
             logs["learning_rate"] = self._get_learning_rate()
 
-            self._total_loss_scalar += tr_loss_scalar
+            self._total_loss_scalar += tr_loss_scalar + \
+                                        (sect_loss_scalar + sent_loss_scalar) if self.is_ext_task() else 0 + \
+                                        tp_tr_loss_scalar if self.is_all_task() else 0 + \
+                                        lm_tr_loss_scalar if self.is_topic_task() else 0
+
+
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
 
@@ -521,30 +551,40 @@ class TGSumTrainer(Seq2SeqTrainer):
                 argument `labels`. Check your model's documentation for all accepted arguments.
         Return:
             `torch.Tensor`: The tensor with training loss on this batch.
+            tr_loss_step, topic_loss_step, lm_loss_step, sect_loss_step, sent_loss_step
         """
         model.train()
 
         inputs = self._prepare_inputs(inputs)
 
         with self.compute_loss_context_manager():
-            loss, topic_loss = self.compute_loss(model, inputs)
+            loss, topic_loss, sect_loss, sent_loss = self.compute_loss(model, inputs)
 
 
         ## combine losses
         # import pdb;
         # pdb.set_trace()
 
-        lm_loss = loss
-        loss = loss + (0.1 * topic_loss)
+        if self.task == 'all':
+            lm_loss = loss
+            loss = loss + (0.1 * topic_loss) + (0.2*sect_loss + 0.2*sent_loss)
+        elif self.task == 'ext':
+            loss = sect_loss + sent_loss
+        elif self.task == 'topic':
+            loss = topic_loss
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
-            topic_loss = topic_loss.mean()  # mean() to average on multi-gpu parallel training
+            topic_loss = topic_loss.mean() if self.task=='all' or self.task=='topic' else None # mean() to average on multi-gpu parallel training
+            sect_loss = sect_loss.mean()  if self.task=='all' or self.task=='ext' else None# mean() to average on multi-gpu parallel training
+            sent_loss = sent_loss.mean()  if self.task=='all' or self.task=='ext' else None# mean() to average on multi-gpu parallel training
 
         if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
             # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
             loss = loss / self.args.gradient_accumulation_steps
-            topic_loss = topic_loss / self.args.gradient_accumulation_steps
+            topic_loss = topic_loss / self.args.gradient_accumulation_steps if self.task=='all' or self.task=='topic' else None
+            sect_loss = sect_loss / self.args.gradient_accumulation_steps if self.task=='all' or self.task=='ext' else None
+            sent_loss = sent_loss / self.args.gradient_accumulation_steps if self.task=='all' or self.task=='ext' else None
 
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
@@ -553,7 +593,11 @@ class TGSumTrainer(Seq2SeqTrainer):
             #     import pdb;pdb.set_trace()
             loss.backward()
 
-        return loss.detach(), topic_loss.detach(), lm_loss.detach()
+        return loss.detach(), \
+               topic_loss.detach() if self.task=='all' or self.task=='topic' else None, \
+               lm_loss.detach() if self.task=='all' else None, \
+               sect_loss.detach() if self.task=='all' or self.task=='ext' else None, \
+               sent_loss.detach() if self.task=='all' or self.task=='ext' else None
 
     def create_optimizer(self):
         """
@@ -608,12 +652,21 @@ class TGSumTrainer(Seq2SeqTrainer):
 
         return self.optimizer
 
+
+    def sent_ext_step(self, inputs):
+
+        # prepare encoder outputs
+        with torch.no_grad():
+            return self.model(**inputs)
+
+
     def prediction_step(
         self,
         model: nn.Module,
         inputs: Dict[str, Union[torch.Tensor, Any]],
         prediction_loss_only: bool,
         ignore_keys: Optional[List[str]] = None,
+        sent_extractive=True,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         """
         Perform an evaluation step on `model` using `inputs`.
@@ -631,61 +684,73 @@ class TGSumTrainer(Seq2SeqTrainer):
             Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
             labels (each being optional).
         """
-        section_idx = ((inputs['input_ids'][0] == 0).nonzero(as_tuple=True)[0])
-
-        if not self.args.predict_with_generate or prediction_loss_only:
-            return super().prediction_step(
-                model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys
-            )
-
-        has_labels = "labels" in inputs
         inputs = self._prepare_inputs(inputs)
 
-        # XXX: adapt synced_gpus for fairscale as well
-        gen_kwargs = {
-            "max_length": self._max_length if self._max_length is not None else self.model.config.max_length,
-            "num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
-            "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
-        }
+        if self.task == 'ext':
+            # should return only sentence loss
+            # import pdb;pdb.set_trace()
+            outputs = self.sent_ext_step(inputs)
+            return (outputs.sect_loss + outputs.sent_loss, None, None)
 
-        if "attention_mask" in inputs:
-            gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
-
-        # prepare generation inputs
-        # some encoder-decoder models can have varying encder's and thus
-        # varying model input names
-        if hasattr(self.model, "encoder") and self.model.encoder.main_input_name != self.model.main_input_name:
-            generation_inputs = inputs[self.model.encoder.main_input_name]
-        else:
-            generation_inputs = inputs[self.model.main_input_name]
-        generated_tokens = self.model.generate(
-            generation_inputs,
-            src_bow_global=inputs['src_bow_global'],
-            ext_labels=inputs['ext_labels'],
-            section_scores=inputs['section_scores'],
-            section_len=inputs['section_len'],
-            doc_ids=inputs['doc_ids'],
-            section_token_index=section_idx,
-            **gen_kwargs,
-        )
-        # in case the batch is shorter than max length, the output should be padded
-        if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
-            generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
-
-        if has_labels:
-            # labels = inputs["labels"][0][0][None, None, :]
-            labels = []
-            for batch_labels in inputs["labels"]:
-                inside_labels = []
-                for label_ids in batch_labels:
-                    inside_labels.append(self._pad_tensors_to_max_len(label_ids[None, :], gen_kwargs["max_length"]))
-
-                labels.append(torch.cat(inside_labels, dim=0))
+        elif self.task=='topic':
+            outputs = self.sent_ext_step(inputs)
+            return (outputs.loss_topic, None, None)
 
         else:
-            labels = None
+            section_idx = ((inputs['input_ids'][0] == 0).nonzero(as_tuple=True)[0])
 
-        return (None, generated_tokens, labels)
+            if not self.args.predict_with_generate or prediction_loss_only:
+                return super().prediction_step(
+                    model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys
+                )
+
+            has_labels = "labels" in inputs
+
+            # XXX: adapt synced_gpus for fairscale as well
+            gen_kwargs = {
+                "max_length": self._max_length if self._max_length is not None else self.model.config.max_length,
+                "num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
+                "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
+            }
+
+            if "attention_mask" in inputs:
+                gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
+
+            # prepare generation inputs
+            # some encoder-decoder models can have varying encder's and thus
+            # varying model input names
+            if hasattr(self.model, "encoder") and self.model.encoder.main_input_name != self.model.main_input_name:
+                generation_inputs = inputs[self.model.encoder.main_input_name]
+            else:
+                generation_inputs = inputs[self.model.main_input_name]
+            generated_tokens = self.model.generate(
+                generation_inputs,
+                src_bow_global=inputs['src_bow_global'],
+                ext_labels=inputs['ext_labels'],
+                section_scores=inputs['section_scores'],
+                section_len=inputs['section_len'],
+                doc_ids=inputs['doc_ids'],
+                section_token_index=section_idx,
+                **gen_kwargs,
+            )
+            # in case the batch is shorter than max length, the output should be padded
+            if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
+                generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
+
+            if has_labels:
+                # labels = inputs["labels"][0][0][None, None, :]
+                labels = []
+                for batch_labels in inputs["labels"]:
+                    inside_labels = []
+                    for label_ids in batch_labels:
+                        inside_labels.append(self._pad_tensors_to_max_len(label_ids[None, :], gen_kwargs["max_length"]))
+
+                    labels.append(torch.cat(inside_labels, dim=0))
+
+            else:
+                labels = None
+
+            return (None, generated_tokens, labels)
 
     def evaluation_loop(
             self,

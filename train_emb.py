@@ -28,21 +28,6 @@ def get_sentence_tokens(text):
         # ret.append(sent)
     return ret
 
-def _parse_paper(param):
-    ex = param
-    example_sents = get_sentence_tokens(ex['paper']['abstractText'])
-    ex['paper']['abstract_tokens'] = example_sents.copy()
-
-    new_sects = []
-    for e in ex['paper']['sections']:
-        # example_sents.extend()
-        e['tokens'] = get_sentence_tokens(e['text'])
-        new_sects.append(e)
-
-    # ex['sentences'] = example_sents
-    ex['paper']['sections'] = new_sects
-
-    return ex
 
 
 def train_emb(args):
@@ -93,7 +78,7 @@ def train_emb(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-mode", default='word2vec', type=str, choices=['glove', 'word2vec'])
-    parser.add_argument("-data_path", default="/disk1/sajad/datasets/sci/mup/single_tokenized/", type=str)
+    parser.add_argument("-data_path", default="/disk1/sajad/datasets/sci/mup/single_tokenized_final2/", type=str)
     parser.add_argument("-emb_size", default=100, type=int)
     parser.add_argument("-emb_path", default="/disk1/sajad/w2v_embeds/w2v_mup_reduced.emb", type=str)
 

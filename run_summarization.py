@@ -22,6 +22,7 @@ import logging
 
 import os
 import random
+import re
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
@@ -69,6 +70,36 @@ logger = logging.getLogger(__name__)
 transformers.logging.set_verbosity_info()
 
 
+def set_global_logging_level(level=logging.ERROR, prefices=[""]):
+    """
+    Override logging levels of different modules based on their name as a prefix.
+    It needs to be invoked after the modules have been loaded so that their loggers have been initialized.
+
+    Args:
+        - level: desired level. e.g. logging.INFO. Optional. Default is logging.ERROR
+        - prefices: list of one or more str prefices to match (e.g. ["transformers", "torch"]). Optional.
+          Default is `[""]` to match all active loggers.
+          The match is a case-sensitive `module_name.startswith(prefix)`
+    """
+    prefix_re = re.compile(fr'^(?:{ "|".join(prefices) })')
+    for name in logging.root.manager.loggerDict:
+        # print(name)
+        if re.match(prefix_re, name):
+            logging.getLogger(name).setLevel(level)
+
+set_global_logging_level(logging.ERROR, ["transformers.models.led.modeling_led", "nlp", "torch", "tensorflow", "tensorboard", "wandb"])
+
+try:
+    os.makedirs('descriptions/')
+except:
+    pass
+
+with open('description.txt') as fR:
+    desc_text = ''
+    for l in fR:
+          desc_text += l
+
+
 try:
     nltk.data.find("tokenizers/punkt")
 except (LookupError, OSError):
@@ -91,6 +122,13 @@ class ModelArguments:
 
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    task: str = field(
+        default='all',
+        metadata={
+            "help": "Which task we want to do?",
+            'choices': ["all", "ext", "topic"]
+        },
     )
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
@@ -345,6 +383,9 @@ def main():
     if os.path.exists(f'last_id_{training_args.run_name}.txt'):
         os.remove(f'last_id_{training_args.run_name}.txt')
 
+    with open(f'descriptions/{training_args.run_name}.txt', mode='w') as fW:
+        fW.write(desc_text)
+
     if data_args.source_prefix is None and model_args.model_name_or_path in [
         "t5-small",
         "t5-base",
@@ -438,6 +479,7 @@ def main():
     model, loading_info = TGSumForConditionalGeneration.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
+        task=model_args.task,
         use_topic=True,
         config=config,
         cache_dir=model_args.cache_dir,
@@ -558,10 +600,11 @@ def main():
 
     def preprocess_function(examples):
         # remove pairs where at least one record is None
-        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section, ext_labels, section_scores = [], [], [], [], [], [], [], []
+        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section, ext_labels, section_scores, headings = [], [], [], [], [], [], [], [], []
         for i in range(len(examples[text_column])):
             if examples[text_column][i] is not None and examples[summary_column][i] is not None:
                 input_sents = []
+                section_heading = []
                 for sect in examples[text_column][i]:
                     sent_sects = []
                     for sent in sect:
@@ -569,7 +612,8 @@ def main():
                               .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
                               .replace('\n', ' ').strip().lower())
                     input_sents.append(' <SENTTT> '.join(sent_sects.copy()))
-
+                section_heading.append([e.split(' <COMBINED> ') for e in examples['section_headings'][i]])
+                headings.append(section_heading)
                 inputs.append(input_sents)
                 src_ids.append(examples["paper_id"][i])
                 # if examples["paper_id"][i] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
@@ -591,6 +635,7 @@ def main():
             padding=padding,
             truncation=True,
             doc_ids=src_ids,
+            section_headings=headings,
             topic_info_tuple=topic_info_tuple,
             ext_labels=ext_labels,
             section_scores=section_scores,
@@ -915,6 +960,7 @@ def main():
     # Initialize our Trainer
     trainer = TGSumTrainer(
         model=model,
+        task=model_args.task,
         args=training_args,
         loading_info=loading_info,
         train_dataset=train_dataset if training_args.do_train else None,

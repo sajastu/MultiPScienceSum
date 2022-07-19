@@ -44,7 +44,7 @@ class GenerationMixin(GenerationMixin):
         sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
                                                   dim=-2).squeeze(-1)
 
-        LIMIT = 2048  # tokens
+        LIMIT = 3072  # tokens
         sample_sect_dist = torch.round(
             torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
         sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]

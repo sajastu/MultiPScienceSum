@@ -9,6 +9,7 @@ import re
 from itertools import chain
 from multiprocessing import Pool
 
+import numpy as np
 import torch
 from os.path import join as pjoin
 
@@ -239,43 +240,38 @@ def topic_info_generate(dialogue, section=True):
 
 def topic_summ_info_generate(dialogue, ex_labels):
     all_counter = Counter()
-    # customer_counter = Counter()
-    # agent_counter = Counter()
-
     for i, sent in enumerate(dialogue):
         if i in ex_labels:
             token_ids = sent["tokenized_id"]
             all_counter.update(token_ids)
-            # if role == "客服":
-            #     agent_counter.update(token_ids)
-            # else:
-            #     customer_counter.update(token_ids)
     return {"all": all_counter}
 
 
-def format_to_lines(args, corpus_type=None, create_jsons=False):
+def format_to_lines(args, corpus_type=None, create_jsons=True):
     # write json files
-    written_insts = 0
 
     if create_jsons:
-        CHUNK_SIZE = 1000
+        corpus_types = ['train', 'val']
+        for corpus_type in corpus_types:
+            written_insts = 0
+            CHUNK_SIZE = 1000
 
-        # for corpus_type in [corpus_type]:
-        instances = []
-        for json_f in glob.glob(pjoin(args.raw_path + f'/{corpus_type}/' + '*.json')):
-            instances.append(json.load(open(json_f)))
+            # for corpus_type in [corpus_type]:
+            instances = []
+            for json_f in glob.glob(pjoin(args.raw_path + f'/{corpus_type}/' + '*.json')):
+                instances.append(json.load(open(json_f)))
 
-        print('Creating json files...')
-        for iter in tqdm(range((len(instances)//CHUNK_SIZE) + 1), total=(len(instances)//CHUNK_SIZE) + 1):
-            with open(f'{args.jsons_path}/{corpus_type}.{iter}.json', mode='w') as fW:
-                try:
-                    json.dump(instances[iter * CHUNK_SIZE: (iter+1) * CHUNK_SIZE], fW)
-                    written_insts += len(instances[iter * CHUNK_SIZE: (iter+1) * CHUNK_SIZE])
-                except:
-                    json.dump(instances[iter * CHUNK_SIZE:], fW)
-                    written_insts += len(instances[iter * CHUNK_SIZE:])
+            print('Creating json files...')
+            for iter in tqdm(range((len(instances)//CHUNK_SIZE) + 1), total=(len(instances)//CHUNK_SIZE) + 1):
+                with open(f'{args.jsons_path}/{corpus_type}.{iter}.json', mode='w') as fW:
+                    try:
+                        json.dump(instances[iter * CHUNK_SIZE: (iter+1) * CHUNK_SIZE], fW)
+                        written_insts += len(instances[iter * CHUNK_SIZE: (iter+1) * CHUNK_SIZE])
+                    except:
+                        json.dump(instances[iter * CHUNK_SIZE:], fW)
+                        written_insts += len(instances[iter * CHUNK_SIZE:])
 
-    print(f'Written instances: {written_insts}')
+            print(f'Written instances for {corpus_type}: {written_insts}')
 
     format_to_bert(args)
 
@@ -285,11 +281,6 @@ def format_to_bert(args):
     # writing aggregated json files...
 
     a_lst = []
-    # if corpus_type is not None:
-    #     for json_f in glob.glob(args.jsons_path + f'/{corpus_type}' + '*.json'):
-    #         real_name = json_f.split('/')[-1]
-    #         a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
-
     # get val and train...
     for json_f in glob.glob(args.jsons_path + f'/' + '*.json'):
         real_name = json_f.split('/')[-1]
@@ -319,8 +310,11 @@ def format_to_bert(args):
     file_counter_global['voc_size'] = voc_wrapper.voc_size()
     file_counter_section['voc_size'] = voc_wrapper.voc_size()
 
+    import pandas as pd
+    heading_keywords = pd.read_csv('data_processor/heading_keyword.csv')
+
     for d in a_lst:
-        file_counter_global, file_counter_section = _format_to_bert(d, file_counter_global, file_counter_section, voc_wrapper)
+        file_counter_global, file_counter_section = _format_to_bert(d, file_counter_global, file_counter_section, voc_wrapper, heading_keywords)
 
     # save file counter
     save_file = pjoin(args.save_path, 'idf_info_global.pt')
@@ -348,20 +342,66 @@ def get_sentence_tokens(text):
             ret.append(sent)
     return ret
 
+def ngrams(input, n):
+    input = input.split(' ')
+    output = []
+    for i in range(len(input)-n+1):
+        output.append(input[i:i+n])
+    return output
+
+def is_abstract_intro_or_conc(heading, heading_keywords, sect_tokens):
+
+    while heading[0].isdigit() or heading[0] == '.':
+        heading = heading[1:]
+    heading = heading.strip()
+
+    if 'abstract' in heading.lower():
+        return True
+
+    INTRO_CONC_SECTIONS = heading_keywords['intro'].dropna().tolist() + heading_keywords['conclusion'].dropna().tolist()
+    one_grams = ngrams(heading.lower(), 1)
+    ongrams = []
+    for oneg in one_grams:
+        ongrams.append(oneg[0])
+
+    for one_gram in ongrams:
+        for intro_conc_sect in INTRO_CONC_SECTIONS:
+            if one_gram.strip() == intro_conc_sect.strip():
+                return True
+
+    if len(heading.split(' ')) > 1:
+        two_grams = ngrams(heading.lower(), 2)
+        twograms = []
+        for tg in two_grams:
+            twograms.append(f'{tg[0]} {tg[1]}')
+
+        for two_gram in twograms:
+            for intro_conc_sect in INTRO_CONC_SECTIONS:
+                if two_gram.strip() == intro_conc_sect.strip():
+                    return True
+
+    return False
+
+
+def is_bad_section(heading, sect_tokens):
+
+    if 'related work' in heading.lower():
+        return True
+
+    return False
 
 def _mp_process_instance(params):
-    paper_jobj, voc_wrapper = params
+    paper_jobj, voc_wrapper, heading_keywords = params
     sections_tokens = []
     # should process section by section ... dataset
     for index, paper_info in enumerate(paper_jobj['sections_txt_tokenized']):
         sections_txt_tokenized = paper_info
         paper_id = paper_jobj['paper_id']
         summaries = paper_jobj['summaries']
-        # import pdb;pdb.set_trace()
-        section_text, section_tokens = sections_txt_tokenized['text'].replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '') \
+        section_text, section_tokens, heading = sections_txt_tokenized['text'].replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '') \
                               .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
-                              .replace('\n', ' ').strip(), sections_txt_tokenized['tokenized']
-        sections_tokens.append((section_text, section_tokens))
+                              .replace('\n', ' ').strip(), sections_txt_tokenized['tokenized'], sections_txt_tokenized['heading']
+        sections_tokens.append((section_text, section_tokens, heading))
 
     b_data_dict = {"tokenized_ids": []}
 
@@ -369,55 +409,83 @@ def _mp_process_instance(params):
     hyp_sections = []
     hyp_sections_token_sents = []
     hyp_sections_txt = []
+    hyp_sect_headings = []
     while sect_idx < len(sections_tokens):
         sect_tokens = sections_tokens[sect_idx][1]
+
+        sect_heading = sections_tokens[sect_idx][2]
         s_idx = sect_idx
-        # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
-            # if len(hyp_sections_txt) == 1:
-            #     import pdb;
-            #     pdb.set_trace()
-        if len(list(chain.from_iterable(sect_tokens))) < 256 and sect_idx+1 < len(sections_tokens):
-            # check if adding next section increases it to be more than 256
 
-            while sect_idx+1 < len(sections_tokens) and\
-                    len(list(chain.from_iterable(sections_tokens[sect_idx][1]))) + len(list(chain.from_iterable(sections_tokens[sect_idx+1][1]))) < 256:
-                sect_idx += 1
+        # if sect_heading is in Intro or Conclusion, take it as it is.
+
+        if is_bad_section(sect_heading, sect_tokens):
+            # import pdb;pdb.set_trace()
             sect_idx += 1
-            if sect_idx < len(sections_tokens) and sect_idx-s_idx > 0:
-                combined_sect = [list(chain.from_iterable(s[1])) for s in sections_tokens[s_idx:sect_idx+1]]
-                combined_sect_txt = [s[0] for s in sections_tokens[s_idx:sect_idx+1]]
-                hyp_sections.append((f'{s_idx}-{sect_idx}', list(chain.from_iterable(combined_sect))))
-                hyp_sections_token_sents.append((f'{s_idx}-{sect_idx}', combined_sect))
-                hyp_sections_txt.append(" ".join(combined_sect_txt))
-            elif sect_idx == len(sections_tokens) -1 :
-                hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[-1][1]))))
-                hyp_sections_token_sents.append((f'{s_idx}', chain.from_iterable(sections_tokens[-1][1])))
-                combined_sect_txt = sections_tokens[s_idx][0]
-                # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
+            continue
 
-                hyp_sections_txt.append(combined_sect_txt)
-            else:
-                hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[s_idx][1]))))
-                hyp_sections_token_sents.append((f'{s_idx}', sections_tokens[s_idx][1]))
-                combined_sect_txt = sections_tokens[s_idx][0]
-                # if paper_id == 'SP:315cac0ca081d8ecedbdfa8b5200c924decf8f5e':
-                # import pdb;pdb.set_trace()
-                hyp_sections_txt.append(combined_sect_txt)
-
-        else:
+        if is_abstract_intro_or_conc(sect_heading, heading_keywords, sect_tokens):
             hyp_sections.append((f'{sect_idx}', list(chain.from_iterable(sect_tokens))))
             hyp_sections_token_sents.append((f'{sect_idx}', sect_tokens))
             combined_sect_txt = sections_tokens[sect_idx][0]
-            # combined_sect_txt = list(chain.from_iterable(combined_sect_txt))
             hyp_sections_txt.append(combined_sect_txt)
+            hyp_sect_headings.append(sect_heading)
+
+        else:
+            if len(list(chain.from_iterable(sect_tokens))) < 512 and sect_idx+1 < len(sections_tokens):
+                # check if adding next section increases it to be more than 256
+                while sect_idx+1 < len(sections_tokens) and len(list(chain.from_iterable(sections_tokens[sect_idx][1]))) + len(list(chain.from_iterable(sections_tokens[sect_idx+1][1]))) < 512:
+                    sect_idx += 1
+                sect_idx += 1
+                if sect_idx < len(sections_tokens) and sect_idx-s_idx > 0:
+                    combined_sect = [list(chain.from_iterable(s[1])) for s in sections_tokens[s_idx:sect_idx+1]]
+                    combined_sect_txt = [s[0] for s in sections_tokens[s_idx:sect_idx+1]]
+                    combined_sect_headings = [s[2] for s in sections_tokens[s_idx:sect_idx+1]]
+                    hyp_sections.append((f'{s_idx}-{sect_idx}', list(chain.from_iterable(combined_sect))))
+                    hyp_sections_token_sents.append((f'{s_idx}-{sect_idx}', combined_sect))
+                    hyp_sections_txt.append(" ".join(combined_sect_txt))
+                    hyp_sect_headings.append(' <COMBINED> '.join(combined_sect_headings))
+
+                elif sect_idx == len(sections_tokens) -1 :
+                    hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[-1][1]))))
+                    hyp_sections_token_sents.append((f'{s_idx}', chain.from_iterable(sections_tokens[-1][1])))
+
+                    combined_sect_txt = sections_tokens[s_idx][0]
+                    combined_sect_headings = sections_tokens[s_idx][2]
+                    hyp_sections_txt.append(combined_sect_txt)
+                    hyp_sect_headings.append(combined_sect_headings)
+
+                else:
+                    hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[s_idx][1]))))
+                    hyp_sections_token_sents.append((f'{s_idx}', sections_tokens[s_idx][1]))
+                    combined_sect_txt = sections_tokens[s_idx][0]
+                    hyp_sections_txt.append(combined_sect_txt)
+                    combined_sect_headings = sections_tokens[s_idx][2]
+                    hyp_sect_headings.append(combined_sect_headings)
+
+
+            else:
+                hyp_sections.append((f'{sect_idx}', list(chain.from_iterable(sect_tokens))))
+                hyp_sections_token_sents.append((f'{sect_idx}', sect_tokens))
+                combined_sect_txt = sections_tokens[sect_idx][0]
+                hyp_sections_txt.append(combined_sect_txt)
+                combined_sect_headings = sections_tokens[s_idx][2]
+                hyp_sect_headings.append(combined_sect_headings)
+
         sect_idx += 1
+
+    # import pdb;pdb.set_trace()
     sect_boundaries = [h[0] for h in hyp_sections]
     hyp_sections = [h[1] for h in hyp_sections]
+    # hyp_sections_txt = [' '.join(h) for h in hyp_sections]
+    assert len(hyp_sections_txt) == len(hyp_sections), 'Discrep1: Topic section and sections'
+
     hyp_sections_token_sents = [h[1] for h in hyp_sections_token_sents]
 
     ext_labels = []
     sections_sents = []
-
+    paper_sents = []
+    sect_len = []
+    masked_sections = []
     for sec_id, sect_tokens in enumerate(hyp_sections):
         ids = [voc_wrapper.w2i(x.lower()) for x in sect_tokens]
         tokenized_id = [x for x in ids if x is not None]
@@ -426,26 +494,61 @@ def _mp_process_instance(params):
                 print('id is larger than vocab size...')
 
         section_sents = get_sentence_tokens(' '.join(sect_tokens))
-        sections_sents.append([' '.join(s) for s in section_sents if len(' '.join(s).strip()) > 0].copy())
 
-        section_ext_labels = []
-        for summary in summaries:
-            ext_labels_section_summary = greedy_selection(section_sents, summary, 10)
-            section_ext_labels.append(ext_labels_section_summary)
-        ext_labels.append(section_ext_labels.copy())
+        if len(section_sents) > 1:
+            paper_sents.extend(section_sents)
+            sect_len.append(len(section_sents))
+            sections_sents.append([' '.join(s) for s in section_sents if len(' '.join(s).strip()) > 0].copy())
+            section_ext_labels = []
+            if 'sample hence no summary' in summaries[0]:
+                section_ext_labels.append([0] * len(section_sents))
+            else:
+                for summary in summaries:
+                    ext_labels_section_summary = greedy_selection(section_sents, summary, 10)
+                    section_ext_labels.append(ext_labels_section_summary)
+            ext_labels.append(section_ext_labels.copy())
+            b_data_dict["tokenized_ids"].append(tokenized_id)
+            masked_sections.append(True)
+        else:
+            # update hype_section
+            masked_sections.append(False)
 
-        b_data_dict["tokenized_ids"].append(tokenized_id)
+    # dropping masked sections
+    hyp_sections_txt = np.array(hyp_sections_txt)[masked_sections].tolist()
+    hyp_sect_headings = np.array(hyp_sect_headings)[masked_sections].tolist()
+    # import pdb;pdb.set_trace()
 
-    assert len(ext_labels) == len(sections_sents), 'discep found'
+
+    sect_len = np.concatenate(([0], np.cumsum(np.array(sect_len))))
+    # get document-level ext labels...
+    if 'sample hence no summary' in summaries[0]:
+        # section_ext_labels.append([0] * len(section_sents))
+        s=0 # do nothing
+    else:
+
+        for sum_idx, summary in enumerate(summaries):
+            ext_labels_document_summary = greedy_selection(paper_sents, summary, 30)
+
+            for sect_idx in range(len(ext_labels)):
+                sect_sum_labels = ext_labels[sect_idx][sum_idx]
+                ext_labels_from_document = ext_labels_document_summary[sect_len[sect_idx]: sect_len[sect_idx+1]]
+                sect_sum_labels = np.array([(d+s) for d, s in zip(ext_labels_from_document, sect_sum_labels)])
+                sect_sum_labels = np.where(sect_sum_labels == 2, 1, sect_sum_labels).tolist()
+                ext_labels[sect_idx][sum_idx] = sect_sum_labels
+
+    assert len(ext_labels) == len(sections_sents), 'discrep found'
     dialogue_example = {
         'paper_id': paper_id,
         'section_boundaries': sect_boundaries,
         "section_text": hyp_sections_txt,
+        "section_headings": hyp_sect_headings,
         "sections_sents": sections_sents,
         "ext_labels": ext_labels,
     }
 
     topic_info_section, topic_info_global = topic_info_generate(b_data_dict)
+
+    assert len(topic_info_section) == len(dialogue_example['section_text']), 'Discrep2: Topic section and sections'
 
     dialogue_example["topic_info_section"] = topic_info_section
     dialogue_example["topic_info_global"] = topic_info_global
@@ -454,7 +557,7 @@ def _mp_process_instance(params):
     return dialogue_example
 
 
-def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapper):
+def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapper, heading_keywords):
 
     json_file, args, save_file = params
 
@@ -469,7 +572,7 @@ def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapp
     mp_instances = []
 
     for paper_jobj in tqdm(jobs, total=len(jobs), desc=f'Processing...'):
-        mp_instances.append((paper_jobj, voc_wrapper))
+        mp_instances.append((paper_jobj, voc_wrapper, heading_keywords))
 
     pool = Pool(16)
 
@@ -483,8 +586,8 @@ def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapp
         file_counter_section['num'] += len(dialogue_example['topic_info_section'])
         datasets.append(dialogue_example)
         count += 1
-        if count % 50 == 0:
-            print(count)
+        # if count % 50 == 0:
+        #     print(count)
 
     datasets_dict = {}
     for ins in datasets:

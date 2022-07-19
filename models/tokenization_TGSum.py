@@ -4,6 +4,7 @@ import math
 from typing import Optional, Union, List, Dict, Any, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
 
 from transformers import TensorType, LEDTokenizer, is_tf_available, is_torch_available, is_flax_available
 import torch
@@ -191,9 +192,11 @@ class BatchEncoding(BatchEncoding):
 class TGSumTokenizer(LEDTokenizer):
 
     # topic_info = torch.load
-    def set_global_idf(self):
-        self.idf_info_global = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info_global.pt")
-        self.idf_info_section = torch.load("/disk1/sajad/datasets/sci/mup/bert_data/idf_info_section.pt")
+    def set_global_idf_and_csv(self):
+        self.idf_info_global = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores/idf_info_global.pt")
+        self.idf_info_section = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores/idf_info_section.pt")
+        self.conc_keywords = pd.read_csv('/home/sajad/packages/summarization/mup/data_processor/heading_keyword.csv')
+        self.conc_keywords = self.conc_keywords['conclusion'].dropna().tolist()
 
     def generate_src_bow(self, topic_src_info_global, input_ids, doc_id, ids):
         all_bows_section = []
@@ -255,65 +258,32 @@ class TGSumTokenizer(LEDTokenizer):
 
 
     def truncate_labels(self, encoded_inputs, doc_id):
-        # if encoded_inputs['input_ids'][-2] != 2:
 
-        # if doc_id == 'SP:d8cd0216bc99e82a957d527a342bcefc5b69ec3c':
-        #     import pdb;pdb.set_trace()
 
-            # encoded_inputs['input_ids'][-2] = 2
-            # encoded_inputs['input_ids'][-1] = self.EOSECT_ID
+        # encoded_input_id = np.array(encoded_inputs['input_ids'])
+        # indices = np.where(encoded_input_id == self.EOSECT_ID)
 
-        # if encoded_inputs['input_ids'][-2] != 2:
-            # encoded_inputs['input_ids'][-2] = 2
-            # encoded_inputs['input_ids'][-1] = self.EOSECT_ID
+        # if len(np.diff(indices)[0]) > 0 and np.diff(indices)[0][-1] < 20:
+        #     encoded_inputs['input_ids'] = np.array(encoded_inputs['input_ids'])[:indices[0][-2]+1].tolist()
 
-        encoded_input_id = np.array(encoded_inputs['input_ids'])
-        indices = np.where(encoded_input_id == self.EOSECT_ID)
-
-        try:
-            if len(np.diff(indices)[0]) > 0 and np.diff(indices)[0][-1] < 20:
-                encoded_inputs['input_ids'] = np.array(encoded_inputs['input_ids'])[:np.diff(indices)[0][-2]].tolist()
-        except:
-            import pdb;pdb.set_trace()
-        input_ids = encoded_inputs['input_ids']
-        pre_ext = encoded_inputs['ext_labels']
+        # input_ids = encoded_inputs['input_ids']
+        # pre_ext = encoded_inputs['ext_labels']
         pre_sect_scores = encoded_inputs['section_scores']
-        sect_Len = input_ids.count(self.BOSECT_ID)
-
-        post_ext = pre_ext[:sect_Len]
-        post_scores = pre_sect_scores[:sect_Len]
-        encoded_inputs['ext_labels'] = post_ext
-
-
-        if encoded_inputs['input_ids'].count(self.BOSECT_ID) == len(encoded_inputs['ext_labels']) \
-            and encoded_inputs['input_ids'].count(0) != sum([len(l[0]) for l in encoded_inputs['ext_labels']]):
-            # should truncate sentence_labels from from the last section
-            last_sect_Labels = encoded_inputs['ext_labels'][-1]
-            should_remove_sents = sum([len(l[0]) for l in encoded_inputs['ext_labels']])-encoded_inputs['input_ids'].count(0)
-
-            # get section len
-            # encoded_input_id = np.array(encoded_inputs['input_ids'])
-            # indices = np.where(encoded_input_id == self.EOSECT_ID)
-
-            # if should_remove_sents < len(last_sect_Labels[0]):
-            last_sect_Labels = [l[:-should_remove_sents] for l in last_sect_Labels]
-            encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'][:-1] + [last_sect_Labels]
-            # elif should_remove_sents == len(last_sect_Labels[0]):
-            #     encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'] [:-1]
-            # else:
-            #     import pdb;pdb.set_trace()
-            #     encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'][:-1]
-            #     last_sect_Labels = encoded_inputs['ext_labels'][-1]
-            #
-            #     from_2_last = should_remove_sents - len(last_sect_Labels[0])
-            #
-            #     last_sect_Labels = [l[:-from_2_last] for l in last_sect_Labels]
-            #     encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'][:-1] + [last_sect_Labels]
-
-            # if len(last_sect_Labels[0]) == 0:
-
-
-            encoded_inputs['input_ids'] = encoded_inputs['input_ids']
+        # sect_Len = input_ids.count(self.BOSECT_ID)
+        #
+        # post_ext = pre_ext[:sect_Len]
+        post_scores = pre_sect_scores
+        # encoded_inputs['ext_labels'] = post_ext
+        #
+        #
+        # if encoded_inputs['input_ids'].count(self.BOSECT_ID) == len(encoded_inputs['ext_labels']) \
+        #     and encoded_inputs['input_ids'].count(0) != sum([len(l[0]) for l in encoded_inputs['ext_labels']]):
+        #     # should truncate sentence_labels from from the last section
+        #     last_sect_Labels = encoded_inputs['ext_labels'][-1]
+        #     should_remove_sents = sum([len(l[0]) for l in encoded_inputs['ext_labels']])-encoded_inputs['input_ids'].count(0)
+        #     last_sect_Labels = [l[:-should_remove_sents] for l in last_sect_Labels]
+        #     encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'][:-1] + [last_sect_Labels]
+        #     encoded_inputs['input_ids'] = encoded_inputs['input_ids']
 
 
         # normalize post_scores
@@ -332,8 +302,7 @@ class TGSumTokenizer(LEDTokenizer):
             for j in range(len(sum_sects_scores)):
                 norm_sect_scores.append(sect_score[j] / sum_sects_scores[j])
             normalized_sect_scores.append(norm_sect_scores.copy())
-
-        sum([s[0] for s in normalized_sect_scores])
+        # sum([s[0] for s in normalized_sect_scores])
 
         encoded_inputs['section_scores'] = normalized_sect_scores
 
@@ -348,107 +317,89 @@ class TGSumTokenizer(LEDTokenizer):
         sent_end_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == 2]
         encoded_inputs['sent_len'] = [e-s for e, s in zip(sent_end_idx, sent_start_idx)]
         # encoded_inputs['input_ids'] = [self.BOSECT_ID] + encoded_inputs['input_ids']
-        encoded_inputs['section_len'] = [len(l[0]) for l in encoded_inputs['ext_labels']]
+        try:
+            sect_lens_from_labels = [len(l[0]) for l in encoded_inputs['ext_labels']]
+        except:
+            import pdb;pdb.set_trace()
+        encoded_inputs['section_len'] = []
+        input_ids_np = np.array(encoded_inputs['input_ids'])
+        indices_sect = np.where(input_ids_np==self.BOSECT_ID)
 
-        # if doc_id == 'SP:d8cd0216bc99e82a957d527a342bcefc5b69ec3c':
-        #     import pdb;pdb.set_trace()
-        #################
-        #################
-        #################
-        #################
-        #
-        # if encoded_inputs['section_len'][-1] == 0:
-        #     encoded_input_id = np.array(encoded_inputs['input_ids'])
-        #     indices = np.where(encoded_input_id == self.EOSECT_ID)[0]
-        #     encoded_inputs['input_ids'] = encoded_input_id[:indices[-2]+1].tolist()
-        #
-        #     input_ids = encoded_inputs['input_ids']
-        #     pre_ext = encoded_inputs['ext_labels']
-        #     pre_sect_scores = encoded_inputs['section_scores']
-        #     sect_Len = input_ids.count(self.BOSECT_ID)
-        #
-        #     post_ext = pre_ext[:sect_Len]
-        #     post_scores = pre_sect_scores[:sect_Len]
-        #     encoded_inputs['ext_labels'] = post_ext
-        #
-        #     if encoded_inputs['input_ids'].count(self.BOSECT_ID) == len(encoded_inputs['ext_labels']) \
-        #             and encoded_inputs['input_ids'].count(0) != sum([len(l[0]) for l in encoded_inputs['ext_labels']]):
-        #         # should truncate sentence_labels from from the last section
-        #         last_sect_Labels = encoded_inputs['ext_labels'][-1]
-        #         should_remove_sents = sum([len(l[0]) for l in encoded_inputs['ext_labels']]) - encoded_inputs[
-        #             'input_ids'].count(0)
-        #         last_sect_Labels = [l[:-should_remove_sents] for l in last_sect_Labels]
-        #         encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'][:-1] + [last_sect_Labels]
-        #
-        #         # if len(last_sect_Labels[0]) == 0:
-        #
-        #         encoded_inputs['input_ids'] = encoded_inputs['input_ids']
-        #
-        #     # normalize post_scores
-        #     sum_sects_scores = [[] for _ in range(len(post_scores[0]))]
-        #     for sect_score in post_scores:
-        #         for j, sum_sect_scores in enumerate(sect_score):
-        #             sum_sects_scores[j].append(sum_sect_scores)
-        #
-        #     for j, s in enumerate(sum_sects_scores):
-        #         sum_ = sum(s)
-        #         sum_sects_scores[j] = sum_
-        #
-        #     normalized_sect_scores = []
-        #     for sect_score in post_scores:
-        #         norm_sect_scores = []
-        #         for j in range(len(sum_sects_scores)):
-        #             norm_sect_scores.append(sect_score[j] / sum_sects_scores[j])
-        #         normalized_sect_scores.append(norm_sect_scores.copy())
-        #
-        #     sum([s[0] for s in normalized_sect_scores])
-        #
-        #     encoded_inputs['section_scores'] = normalized_sect_scores
+        i = 0
+        while i < len(indices_sect[0]):
+            try:
+                sect_tokens = encoded_inputs['input_ids'][indices_sect[0][i] : indices_sect[0][i+1]]
+            except:
+                sect_tokens = encoded_inputs['input_ids'][indices_sect[0][i] : ]
 
-            # input_ids_tmp = encoded_inputs['input_ids']
-            # try:
-            #     input_ids_tmp.remove(self.BOSECT_ID)
-            #     input_ids_tmp.remove(self.EOSECT_ID)
-            # except:
-            #     import pdb;pdb.set_trace()
-            # sent_start_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == 0]
-            # sent_end_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == 2]
-            # encoded_inputs['sent_len'] = [e - s for e, s in zip(sent_end_idx, sent_start_idx)]
-            ## encoded_inputs['input_ids'] = [self.BOSECT_ID] + encoded_inputs['input_ids']
-            # encoded_inputs['section_len'] = [len(l[0]) for l in encoded_inputs['ext_labels']]
-        ###########################
-        ###########################
-        ###########################
-        ###########################
+            if sect_lens_from_labels[i] != sect_tokens.count(0):
+                # print(doc_id)
+                import pdb;pdb.set_trace()
 
-        # if sum(encoded_inputs['section_len']) != input_ids.count(0):
+            assert sect_lens_from_labels[i] == sect_tokens.count(0), 'Sect len from extractive labels and sect tokens should be equal...'
+            encoded_inputs['section_len'].append(sect_tokens.count(0))
+
+            i+=1
+
+        # import pdb;pdb.set_trace()
+        # if doc_id=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
         #     import pdb;pdb.set_trace()
 
-        # further truncating input_ids
-        # encoded_input_id = np.array(encoded_inputs['input_ids'])
-        # indices = np.where(encoded_input_id == self.EOSECT_ID)[0]
-        # indices = np.concatenate(([0], indices))
-        # sect_token_len = np.diff(indices)
-        # sect_token_len = np.cumsum(sect_token_len)
-        #
-        # for j, sect_tkn_len in enumerate(sect_token_len):
-        #
-        #     encoded_inputs['input_ids'][:sect_token_len]
-
-
-
-
-        # return encoded_inputs['input_ids'], encoded_inputs['ext_labels'], encoded_inputs['section_scores']
         return encoded_inputs
+
+    def last_sect_in_conc(self, headings):
+
+        def ngrams(input, n):
+            input = input.split(' ')
+            output = []
+            for i in range(len(input) - n + 1):
+                output.append(input[i:i + n])
+            return output
+
+        for heading in headings:
+
+            while heading[0].isdigit() or heading[0] == '.':
+                heading = heading[1:]
+            heading = heading.strip()
+
+            one_grams = ngrams(heading.lower(), 1)
+            ongrams = []
+            for oneg in one_grams:
+                ongrams.append(oneg[0])
+
+            for one_gram in ongrams:
+                for conc_sect in self.conc_keywords:
+                    if one_gram.strip() == conc_sect.strip():
+                        return True
+
+            if len(heading.split(' ')) > 1:
+                two_grams = ngrams(heading.lower(), 2)
+                twograms = []
+                for tg in two_grams:
+                    twograms.append(f'{tg[0]} {tg[1]}')
+
+                for two_gram in twograms:
+                    for conc_sect in self.conc_keywords:
+                        if two_gram.strip() == conc_sect.strip():
+                            return True
+
+            return False
+
 
     def truncate_sequences(
         self,
         ids: List[int],
+        ext_labels=None,
+        section_scores=None,
+        section_headings=None,
+        doc_id=None,
+        LAST_SAMPLING_SECTION_NUM=1,
         pair_ids: Optional[List[int]] = None,
         num_tokens_to_remove: int = 0,
+        num_tokens_to_preserve: int = 0,
         truncation_strategy: Union[str, TruncationStrategy] = "longest_first",
         stride: int = 0,
-    ) -> Tuple[List[int], List[int], List[int]]:
+    ) -> Tuple[List[int], List[int], List[int], List[List[List[int]]], List[List[float]]]:
 
         if num_tokens_to_remove <= 0:
             return ids, pair_ids, []
@@ -467,7 +418,206 @@ class TGSumTokenizer(LEDTokenizer):
                     ids = ids[num_tokens_to_remove:]
                 elif self.truncation_side == "right":
                     overflowing_tokens = ids[-window_len:]
-                    ids = ids[:-num_tokens_to_remove]
+
+                    if 'tgt' in doc_id:
+                        ids = ids[:-num_tokens_to_remove]
+
+                    else:
+
+                        # if doc_id=='SP:9d5bd10c8e123e41aa1421b9a55a32f2a036e790':
+                        #     import pdb;pdb.set_trace()
+
+                        ids = np.array(ids)
+                        indices = np.where(ids == self.EOSECT_ID)[0]
+
+                        # if doc_id == 'SP:4a2f4e8574d83dc747b286b888147b63cdea823e':
+                        #     import pdb;pdb.set_trace()
+
+                        # only when sample the last section when it is of "conclusion"
+                        if len(indices) > LAST_SAMPLING_SECTION_NUM and self.last_sect_in_conc(section_headings[0][-1]):
+                            indices = np.concatenate(([-1], indices))
+                            # last two sections
+                            last_n_sects_ids = ids[indices[-LAST_SAMPLING_SECTION_NUM-1]+1:]
+                            last_n_ext_labels = ext_labels[-LAST_SAMPLING_SECTION_NUM:]
+                            last_n_section_scores = section_scores[-LAST_SAMPLING_SECTION_NUM:]
+
+                            curr_len = len(last_n_sects_ids)
+
+                            # what if curr_len is more than the allowed??
+                            # should skip the sampling from the last section then... only first tokens...
+
+                            if curr_len < num_tokens_to_preserve:
+
+                                sampling_rest = num_tokens_to_preserve - curr_len
+                                first_ids = []
+                                first_ext_labels = []
+                                first_section_scores = []
+                                sampled = 0
+                                sect_idx = 0
+                                # if doc_id=='SP:fd4240e0f2c6faa6783fe5e1d1e53d0d5f0945a0':
+                                #     import pdb;pdb.set_trace()
+                                # important note: sampling shouldn't be done from the last two scetions!!
+
+                                while sampled < sampling_rest:
+                                    if sect_idx < (len(indices)-1)-LAST_SAMPLING_SECTION_NUM:
+                                        first_ids.append(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
+                                        first_ext_labels.append(ext_labels[sect_idx])
+                                        first_section_scores.append(section_scores[sect_idx])
+                                        sampled += len(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
+                                        sect_idx += 1
+
+                                # if doc_id=='SP:8badc3f75194e9780063af5a2f26448e41e733d4':
+                                #     import pdb;pdb.set_trace()
+
+                                if sampled > sampling_rest:
+                                    # remove sentencces from last section to fit sampling criteria
+                                    # first_ids[-1] is the last added section that might be truncated...
+                                    num_tokens_to_remove = sampled - sampling_rest
+                                    # try:
+                                    first_ids[-1] = first_ids[-1][:-num_tokens_to_remove]
+                                    # except:
+                                    #     import pdb;pdb.set_trace()
+
+                                    if len(first_ids[-1]) > 10:
+
+                                        if first_ids[-1][-3] != 2:
+
+                                            if first_ids[-1][-2] != 2:
+                                                first_ids[-1][-2] = 2
+                                            if first_ids[-1][-1] != self.EOSECT_ID:
+                                                first_ids[-1][-1] = self.EOSECT_ID
+                                        else:
+                                            sect_sent_pos = np.where(first_ids[-1] == 0)[0]
+                                            first_ids[-1] = np.concatenate((first_ids[-1][:sect_sent_pos[-1]], [self.EOSECT_ID]))
+                                            # drop the last sentence entirely
+
+
+                                        n_sents_in_last_sect = np.count_nonzero(first_ids[-1] == 0)
+                                        first_ext_labels[-1] = [ex[:n_sents_in_last_sect] for ex in first_ext_labels[-1]]
+
+
+                                    else:
+                                        # drop the whole section!
+                                        first_ids = first_ids[:-1]
+                                        first_ext_labels = first_ext_labels[:-1]
+                                        first_section_scores = first_section_scores[:-1]
+
+
+                                ids = list(itertools.chain.from_iterable([f.tolist() for f in first_ids])) + last_n_sects_ids.tolist()
+                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
+                                #     import pdb;
+                                #     pdb.set_trace()
+                                ext_labels = first_ext_labels + last_n_ext_labels
+                                section_scores = first_section_scores + last_n_section_scores
+
+                            else:
+                                # if curr_len > preserved_tokens_num
+
+                                ids = ids[:-num_tokens_to_remove].tolist()
+                                if ids[-3] != 2:
+                                    if ids[-2] != 2:
+                                        ids[-2] = 2
+                                    if ids[-1] != self.EOSECT_ID:
+                                        ids[-1] = self.EOSECT_ID
+                                else:
+                                    # drop the whole last sentence...
+                                    ids = np.array(ids)
+                                    sent_pos = np.where(ids == 0)[0]
+                                    ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
+                                # we are not sure how many sections are there so process in generic form
+                                sections_num = ids.count(self.BOSECT_ID)
+                                ids = np.array(ids)
+                                sect_indices = np.where(ids==self.EOSECT_ID)[0]
+                                # sect_idx = 0
+                                # while sect_idx < len(sect_indices) - 1:
+
+                                ext_labels = ext_labels[:sections_num]
+                                section_scores = section_scores[:sections_num]  # no change to section score
+
+                                # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
+                                last_sect_sents_num = np.count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1] == 0)
+                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
+                                #     import pdb;
+                                #     pdb.set_trace()
+                                ext_labels = ext_labels[:-1] + [[ex[:last_sect_sents_num] for ex in ext_labels[-1]]]
+                                ids = ids.tolist()
+
+                        else:
+
+
+
+                            if len(section_headings[0]) > 1:
+                                # if curr_len > preserved_tokens_num
+                                ids = ids[:-num_tokens_to_remove].tolist()
+                                if ids[-3] != 2:
+                                    if ids[-3] == self.EOSECT_ID:
+                                        ids = ids[:-2]
+
+                                    elif ids[-3] == self.BOSECT_ID:
+                                        ids = ids[:-3]
+
+                                    else:
+                                        if ids[-2] != 2:
+                                            ids[-2] = 2
+                                        if ids[-1] != self.EOSECT_ID:
+                                            ids[-1] = self.EOSECT_ID
+
+
+                                else:
+                                    # drop the whole last sentence...
+                                    ids = np.array(ids)
+                                    sent_pos = np.where(ids == 0)[0]
+                                    ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
+                                # we are not sure how many sections are there so process in generic form
+                                sections_num = ids.count(self.BOSECT_ID)
+                                ids = np.array(ids)
+                                sect_indices = np.where(ids == self.EOSECT_ID)[0]
+                                # sect_idx = 0
+                                # while sect_idx < len(sect_indices) - 1:
+
+                                ext_labels = ext_labels[:sections_num]
+                                section_scores = section_scores[:sections_num]  # no change to section score
+
+                                # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
+                                try:
+                                    last_sect_sents_num = np.count_nonzero(ids[sect_indices[-2] + 1: sect_indices[-1] + 1] == 0)
+                                except:
+                                    last_sect_sents_num = np.count_nonzero(ids[0: sect_indices[-1] + 1] == 0)
+
+                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
+                                #     import pdb;
+                                #     pdb.set_trace()
+                                ext_labels = ext_labels[:-1] + [[ex[:last_sect_sents_num] for ex in ext_labels[-1]]]
+                                ids = ids.tolist()
+
+                                # if doc_id == 'SP:b2fc6ca65add04fb32bcf7622d9098de9004ca2b':
+                                #     import pdb;
+                                #     pdb.set_trace()
+
+                            else:
+
+
+                                # we got only one section...!!!
+                                # normal truncation
+                                # if doc_id=='SP:9326f169cc5e8d2f4268dcf39af31590ee004d98':
+                                #     import pdb;pdb.set_trace()
+                                ids = ids[:-num_tokens_to_remove].tolist()
+                                if ids[-3] != 2:
+                                    if ids[-2] != 2:
+                                        ids[-2] = 2
+                                    if ids[-1] != self.EOSECT_ID:
+                                        ids[-1] = self.EOSECT_ID
+                                else:
+                                    # drop the whole last sentence...
+                                    ids = np.array(ids)
+                                    sent_pos = np.where(ids==0)[0]
+                                    ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
+
+                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
+                                #     import pdb;
+                                #     pdb.set_trace()
+                                ext_labels[0] = [ex[:ids.count(0)] for ex in ext_labels[0]]
+                                section_scores = section_scores # no change to section score
 
                 else:
                     raise ValueError(f"invalid truncation strategy: {self.truncation_side}, use 'left' or 'right'.")
@@ -525,7 +675,7 @@ class TGSumTokenizer(LEDTokenizer):
                     "for instance 'longest_first' or 'only_first'."
                 )
 
-        return (ids, pair_ids, overflowing_tokens)
+        return (ids, pair_ids, overflowing_tokens, ext_labels, section_scores)
 
     def prepare_for_model(
             self,
@@ -533,6 +683,7 @@ class TGSumTokenizer(LEDTokenizer):
             pair_ids: Optional[List[int]] = None,
             doc_ids=None,
             section_scores=None,
+            section_headings=None,
             ext_labels=None,
             topic_info_tuple=None,
             add_special_tokens: bool = False,
@@ -563,7 +714,7 @@ class TGSumTokenizer(LEDTokenizer):
         )
 
 
-        self.set_global_idf()
+        self.set_global_idf_and_csv()
         pair = bool(pair_ids is not None)
         len_ids = len(ids)
         len_pair_ids = len(pair_ids) if pair else 0
@@ -598,22 +749,27 @@ class TGSumTokenizer(LEDTokenizer):
         add_special_tokens = False if 'tgt' not in doc_ids else True
         total_len = len_ids + len_pair_ids + (self.num_special_tokens_to_add(pair=pair) if add_special_tokens else 0)
 
+        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
+        #     import pdb;pdb.set_trace()
+
         # Truncation: Handle max sequence length
         overflowing_tokens = []
         if truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE and max_length and total_len > max_length:
-            ids, pair_ids, overflowing_tokens = self.truncate_sequences(
+            ids, pair_ids, overflowing_tokens, ext_labels, section_scores = self.truncate_sequences(
                 ids,
+                ext_labels,
+                section_scores,
+                doc_id=doc_ids,
+                section_headings=section_headings,
                 pair_ids=pair_ids,
                 num_tokens_to_remove=total_len - max_length,
+                num_tokens_to_preserve=max_length,
                 truncation_strategy=truncation_strategy,
                 stride=stride,
             )
 
-            if ids[-1] != self.EOSECT_ID:
-                ids[-1] = self.EOSECT_ID
-                if ids[-2] != 2:
-                    ids[-2] = 2
 
+        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
 
         if return_overflowing_tokens:
             encoded_inputs["overflowing_tokens"] = overflowing_tokens
@@ -629,11 +785,16 @@ class TGSumTokenizer(LEDTokenizer):
 
         # Build output dictionary
         encoded_inputs["input_ids"] = sequence
+        # encoded_inputs["ext_labels"] = ext_labels
+        # encoded_inputs["section_scores"] = section_scores
         # print(len(sequence))
         # import pdb;pdb.set_trace()
         # if doc_ids == 'SP:f76f1289d7b47dd1bd381108f5b86a410613af9e':
         #     import pdb;
         #     pdb.set_trace()
+
+        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
+        #     import pdb;pdb.set_trace()
 
         if encoded_inputs['input_ids'][-3] == self.EOSECT_ID:
             encoded_inputs['input_ids'] = encoded_inputs['input_ids'][:-3] + [self.EOSECT_ID]
@@ -654,7 +815,8 @@ class TGSumTokenizer(LEDTokenizer):
 
         # section len should be eq to number of sents.
 
-
+        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
+        #     import pdb;pdb.set_trace()
 
             # print(len(sequence))
         # print('no----')
@@ -705,13 +867,18 @@ class TGSumTokenizer(LEDTokenizer):
                 return_attention_mask=return_attention_mask,
             )
 
+        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
+        #     import pdb;pdb.set_trace()
+
         if 'tgt' not in doc_ids:
             idx = 0
             while idx < len(encoded_inputs['input_ids']):
                 id = encoded_inputs['input_ids'][idx]
                 if idx + 1 < len(encoded_inputs['input_ids']):
                     if id == self.BOSECT_ID:
-                        assert encoded_inputs['input_ids'][idx + 1] == 0, f"after {self.BOSECT_ID} should be 0"
+                        # if encoded_inputs['input_ids'][idx + 1] != 0:
+                        #     import pdb;pdb.set_trace()
+                        assert encoded_inputs['input_ids'][idx + 1] == 0, f"after {self.BOSECT_ID} should be 0, but found {encoded_inputs['input_ids'][idx + 1]}"
                     if id == 2:
                         assert ((encoded_inputs['input_ids'][idx + 1] == self.EOSECT_ID) or (
                                 encoded_inputs['input_ids'][idx + 1] == 0)), f"after 2 should be {self.EOSECT_ID} or 0"
@@ -726,8 +893,13 @@ class TGSumTokenizer(LEDTokenizer):
             if 'section_len' in encoded_inputs.keys() and sum(encoded_inputs['section_len']) != encoded_inputs['input_ids'].count(0):
                 import pdb;pdb.set_trace()
 
-            if 'section_len' not in encoded_inputs.keys():
+            # if 'section_len' not in encoded_inputs.keys():
+            # import pdb;
+            # pdb.set_trace()
+
+            if encoded_inputs['input_ids'].count(self.EOSECT_ID) != len(encoded_inputs['section_scores']):
                 import pdb;pdb.set_trace()
+            assert encoded_inputs['input_ids'].count(self.EOSECT_ID) == len(encoded_inputs['section_scores']), 'Decrep in section...'
 
             assert sum(encoded_inputs['section_len']) == encoded_inputs['input_ids'].count(0), 'Discrep in sentence len'
 
@@ -749,6 +921,7 @@ class TGSumTokenizer(LEDTokenizer):
         doc_ids=None,
         is_target=False,
         topic_info_tuple=None,
+        section_headings=None,
         ext_labels=None,
         section_scores=None,
         truncation_strategy: TruncationStrategy = TruncationStrategy.DO_NOT_TRUNCATE,
@@ -809,6 +982,7 @@ class TGSumTokenizer(LEDTokenizer):
                 new_ext_labels = []
                 # sections
                 for sect_idx, sect_sentences in enumerate(sections):
+                    # section_heading = section_headings[sect_idx]
                     first_ids = [self.BOSECT_ID, 0]
                     # sentences
                     # import pdb;
@@ -824,31 +998,17 @@ class TGSumTokenizer(LEDTokenizer):
                                 first_ids += first_id + [2, 0]
                                 for sum_idx in range(len(old_ext_label_section)):
                                     new_ext_label_section[sum_idx].append(old_ext_label_section[sum_idx][jsent])
-
-                            # else:
-                            #     if doc_ids[idx] == 'SP:d8cd0216bc99e82a957d527a342bcefc5b69ec3c':
-                            #         import pdb;
-                            #         pdb.set_trace()
-                        # else:
-                        #     if doc_ids[idx] == 'SP:d8cd0216bc99e82a957d527a342bcefc5b69ec3c':
-                        #         import pdb;
-                        #         pdb.set_trace()
-
                     new_ext_labels.append(new_ext_label_section.copy())
-
+                    # if doc_ids[idx] == 'SP:8badc3f75194e9780063af5a2f26448e41e733d4' and sect_idx==9:
+                    #     import pdb;
+                    #     pdb.set_trace()
                     first_ids = first_ids[:-1]
-
-                    # first_ids = first_ids.remove(self.BOSECT_ID) if self.BOSECT_ID in first_id else first_id
-                    # first_ids = first_ids.remove(self.EOSECT_ID) if self.EOSECT_ID in first_id else first_id
-
                     first_ids = first_ids + [self.EOSECT_ID]
-
                     first_ids_all.extend(first_ids.copy())
-                first_ids = first_ids_all
-                # if doc_ids[idx] == 'SP:d8cd0216bc99e82a957d527a342bcefc5b69ec3c':
+                # if doc_ids[idx] == 'SP:8badc3f75194e9780063af5a2f26448e41e733d4':
                 #     import pdb;
                 #     pdb.set_trace()
-                # first_ids =  first_ids
+                first_ids = first_ids_all
                 second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
                 input_ids.append((first_ids, second_ids))
                 ext_labels_set.append(new_ext_labels.copy())
@@ -869,6 +1029,7 @@ class TGSumTokenizer(LEDTokenizer):
             doc_ids=doc_ids,
             ext_labels=ext_labels_set,
             section_scores=section_scores,
+            section_headings=section_headings,
             topic_info_tuple=topic_info_tuple,
             add_special_tokens=add_special_tokens,
             padding_strategy=padding_strategy,
@@ -943,6 +1104,7 @@ class TGSumTokenizer(LEDTokenizer):
         doc_ids=None,
         ext_labels=None,
         section_scores=None,
+        section_headings=None,
         topic_info_tuple=None,
         add_special_tokens: bool = True,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
@@ -968,38 +1130,39 @@ class TGSumTokenizer(LEDTokenizer):
         """
 
         batch_outputs = {}
-        try:
-            for idx, (first_ids, second_ids) in enumerate(batch_ids_pairs):
-                outputs = self.prepare_for_model(
-                    first_ids,
-                    second_ids,
-                    sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
-                    doc_ids=doc_ids[idx] if doc_ids is not None else None,
-                    section_scores=section_scores[idx] if section_scores is not None else None,
-                    ext_labels=ext_labels[idx] if 'tgt' not in doc_ids[idx] else None,
-                    topic_info_tuple=topic_info_tuple["topic_info_global"][idx] if topic_info_tuple is not None else None,
-                    add_special_tokens=add_special_tokens,
-                    padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
-                    truncation=truncation_strategy.value,
-                    max_length=max_length,
-                    stride=stride,
-                    pad_to_multiple_of=None,  # we pad in batch afterward
-                    return_attention_mask=False,  # we pad in batch afterward
-                    return_token_type_ids=return_token_type_ids,
-                    return_overflowing_tokens=return_overflowing_tokens,
-                    return_special_tokens_mask=return_special_tokens_mask,
-                    return_length=return_length,
-                    return_tensors=None,  # We convert the whole batch to tensors at the end
-                    prepend_batch_axis=False,
-                    verbose=verbose,
-                )
+        # try:
+        for idx, (first_ids, second_ids) in enumerate(batch_ids_pairs):
+            outputs = self.prepare_for_model(
+                first_ids,
+                second_ids,
+                sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
+                doc_ids=doc_ids[idx] if doc_ids is not None else None,
+                section_scores=section_scores[idx] if section_scores is not None else None,
+                section_headings=section_headings[idx] if section_headings is not None else None,
+                ext_labels=ext_labels[idx] if 'tgt' not in doc_ids[idx] else None,
+                topic_info_tuple=topic_info_tuple["topic_info_global"][idx] if topic_info_tuple is not None else None,
+                add_special_tokens=add_special_tokens,
+                padding=PaddingStrategy.DO_NOT_PAD.value,  # we pad in batch afterward
+                truncation=truncation_strategy.value,
+                max_length=max_length,
+                stride=stride,
+                pad_to_multiple_of=None,  # we pad in batch afterward
+                return_attention_mask=False,  # we pad in batch afterward
+                return_token_type_ids=return_token_type_ids,
+                return_overflowing_tokens=return_overflowing_tokens,
+                return_special_tokens_mask=return_special_tokens_mask,
+                return_length=return_length,
+                return_tensors=None,  # We convert the whole batch to tensors at the end
+                prepend_batch_axis=False,
+                verbose=verbose,
+            )
 
-                for key, value in outputs.items():
-                    if key not in batch_outputs:
-                        batch_outputs[key] = []
-                    batch_outputs[key].append(value)
-        except:
-            import pdb;pdb.set_trace()
+            for key, value in outputs.items():
+                if key not in batch_outputs:
+                    batch_outputs[key] = []
+                batch_outputs[key].append(value)
+        # except:
+        #     import pdb;pdb.set_trace()
         batch_outputs = self.pad(
             batch_outputs,
             padding=padding_strategy.value,
