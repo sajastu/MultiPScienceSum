@@ -37,6 +37,7 @@ from models.encoder_sect import TransformerEncoder
 from models.generation_utils import GenerationMixin
 from models.networks.decoding_network import DecoderNetwork
 from models.sequential_TGSum.roberta_tgsum import RobertaEncoder
+from models.tokenization_TGSum import TGSumTokenizer
 from models.topic import TopicModel
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import no_init_weights, get_checkpoint_shard_files, load_state_dict, \
@@ -1006,61 +1007,48 @@ class TGSumModel(LEDModel):
         # config.prefix = 'led'
         # self.base_model_prefix = 'led'
         super().__init__(config)
-        self.task = task
         padding_idx, vocab_size = config.pad_token_id, config.vocab_size
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
 
-        if self.is_ext_task():
-            self.sent_scorer = nn.Linear(config.d_model, 1)
-            self.sect_scorer = nn.Linear(config.d_model, 1)
+        self.sent_scorer = nn.Linear(config.d_model, 1)
+        self.sect_scorer = nn.Linear(config.d_model, 1)
 
-        if self.is_all_task() or self.is_ext_task() or self.is_topic_task():
+        if self.is_all_task() or self.is_ext_task():
             self.encoder = LEDEncoder(config, self.shared)
-            self.encoder.gradient_checkpointing = False
+            self.encoder.gradient_checkpointing = True
 
-        if self.is_all_task():
-            self.decoder = TGSumDecoder(config, self.shared, use_topic=use_topic)
+        self.decoder = TGSumDecoder(config, self.shared, use_topic=use_topic)
 
         # Initialize weights and apply final processing
         self.post_init()
 
         self.use_topic = use_topic
 
-        if self.is_all_task() or self.is_topic_task():
-            topic_emb_size = 300
-            self.top_words_dim = 3001
+        topic_emb_size = 300
+        self.top_words_dim = 3001
 
-            self.is_hier = True
-            if self.is_hier:
-                self.hier_encoder = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
+        self.is_hier = True
+        if self.is_hier:
+            self.hier_encoder = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
                                                    dropout=0.2, num_inter_layers=2)
                 # roberta_config = RobertaConfig.from_pretrained('roberta-large')
                 # roberta_config.num_hidden_layers = 4
                 # self.hier_encoder = RobertaEncoder(roberta_config)
 
-            self.num_topics = 100
-            self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
-                                              infnet='combined', n_components=self.num_topics, model_type='prodLDA',
-                                              hidden_sizes=(100, 100), activation='softplus',
-                                              dropout=0.2, learn_priors=True, label_size=0)
+        self.num_topics = 100
+        self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
+                                          infnet='combined', n_components=self.num_topics, model_type='prodLDA',
+                                          hidden_sizes=(100, 100), activation='softplus',
+                                          dropout=0.2, learn_priors=True, label_size=0)
 
-            self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, config.d_model)
-            self.topic_emb_linear = nn.Linear(topic_emb_size, config.d_model)
+        self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, config.d_model)
+        self.topic_emb_linear = nn.Linear(topic_emb_size, config.d_model)
 
-            for p in self.topic_gate_linear.parameters():
-                self._set_parameter_linear(p)
-            for p in self.topic_emb_linear.parameters():
-                self._set_parameter_linear(p)
+        for p in self.topic_gate_linear.parameters():
+            self._set_parameter_linear(p)
+        for p in self.topic_emb_linear.parameters():
+            self._set_parameter_linear(p)
 
-
-    def is_ext_task(self):
-        return self.task == 'all' or self.task == 'ext'
-
-    def is_topic_task(self):
-        return self.task == 'all' or self.task == 'topic'
-
-    def is_all_task(self):
-        return self.task == 'all'
 
     def _set_parameter_linear(self, p):
         if p.dim() > 1:
@@ -1088,8 +1076,10 @@ class TGSumModel(LEDModel):
 
         try:
             gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
+                # gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec.unsqueeze(0), topic_vec], dim=-1)))
         except:
-            import pdb;pdb.set_trace()
+            gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec.unsqueeze(0), topic_vec], dim=-1)))
+            # import pdb;pdb.set_trace()
         fused_vec = (1 - gate) * self.topic_emb_linear(topic_vec) + gate * mapped_vec
 
         return fused_vec
@@ -1219,30 +1209,27 @@ class TGSumModel(LEDModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
+        elif return_dict and not isinstance(encoder_outputs, LEDEncoderBaseModelOutput):
+            encoder_outputs = LEDEncoderBaseModelOutput(
+                last_hidden_state=encoder_outputs[0],
+                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+                global_attentions=encoder_outputs[3] if len(encoder_outputs) > 3 else None,
+            )
 
-            if self.is_ext_task():  # only pretrain extractive sent task
-                return self.pretrain_ext(input_ids, sections_sentence_encoding, encoder_outputs)
+        if topic_model_global_outputs is None:
+            prior_mean, prior_variance, posterior_mean, posterior_variance, \
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
+                                                                                               encoder_outputs[0].mean(dim=1),
+                                                                                               labels=None)  # X_contexual is the source embedding
+        else:
+            prior_mean, prior_variance, posterior_mean, posterior_variance, \
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
 
-            if self.is_topic_task() or self.is_all_task():
-                if topic_model_global_outputs is None:
-                    prior_mean, prior_variance, posterior_mean, posterior_variance, \
-                    posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
-                                                                                                       encoder_outputs[0].mean(dim=1),
-                                                                                                       labels=None)  # X_contexual is the source embedding
-                else:
-                    prior_mean, prior_variance, posterior_mean, posterior_variance, \
-                    posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
-
-                encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs.last_hidden_state)
+        encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs.last_hidden_state)
 
             # If the user passed a tuple for encoder_outputs, we wrap it in a LEDEncoderBaseModelOutput when return_dict=False
-            elif return_dict and not isinstance(encoder_outputs, LEDEncoderBaseModelOutput):
-                encoder_outputs = LEDEncoderBaseModelOutput(
-                    last_hidden_state=encoder_outputs[0],
-                    hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                    attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-                    global_attentions=encoder_outputs[3] if len(encoder_outputs) > 3 else None,
-                )
+
 
 
 
@@ -1253,209 +1240,209 @@ class TGSumModel(LEDModel):
 
 
 
-        if self.task == 'all':
-            sent_scores = None
-            sect_scores = None
-            if sections_sentence_encoding is None:
-                sent_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                         index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
+        sent_scores = None
+        sect_scores = None
+        if sections_sentence_encoding is None:
+            sent_repr = self.get_repr_from_index(encoder_outputs[0],
+                                                     index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
 
-                section_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                        index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
+            section_repr = self.get_repr_from_index(encoder_outputs[0],
+                                                    index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
 
-                sent_scores = torch.sigmoid(
-                    self.sent_scorer(sent_repr)
-                ).squeeze(-1)
+            sent_scores = torch.sigmoid(
+                self.sent_scorer(sent_repr)
+            ).squeeze(-1)
 
-                sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
+            sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
 
 
-                LIMIT = 3072  # tokens
-                sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
+            LIMIT = 3072  # tokens
+            sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
 
-                sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
-                end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+            sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+            end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
 
-                try:
-                    sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
-                except:
-                    print('found noncons')
+            try:
+                sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+            except:
+                print('found noncons')
+                # import pdb;pdb.set_trace()
+
+            try:
+                sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True, padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            except Exception as ee:
+                print(ee)
+                print(doc_ids)
+
+            try:
+                sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            except:
+                import pdb;pdb.set_trace()
+
+            # sects_batch_sent_lens.sum(dim=2)
+            # updating sample_sect_dist based on the total number of tokens in each section.
+
+            updated_sect_dist = (sample_sect_dist - sects_batch_sent_lens.sum(dim=2))
+            fulfilled_sects = updated_sect_dist > 0
+
+            if LIMIT < input_ids.size(-1) and ((~fulfilled_sects).float().sum()) > 0 and fulfilled_sects.float().sum() != fulfilled_sects.size(1):
+                remaining_toks = (updated_sect_dist * fulfilled_sects).sum()
+                revisit_section_dist = (sect_scores * ~fulfilled_sects) / (sect_scores * ~fulfilled_sects).sum()
+                sample_sect_dist_v2 = torch.round(revisit_section_dist * remaining_toks)
+                sample_sect_dist += sample_sect_dist_v2
+                sample_sect_dist = torch.where(fulfilled_sects, sample_sect_dist-updated_sect_dist, sample_sect_dist)
+
+            sect_sent_mask = (sects_batch_sent_lens > 0).float()
+
+            top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
+
+            top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
+            top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
+
+            sect_sent_n_selects = (~((torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
+            top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x], padding_value=-1).t()) != -1).cuda()
+            pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
+
+            section_len_cum = torch.cumsum(section_len, dim=-1)
+            shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
+            # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
+            shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
+            pre_idx = (((pre_idx) + shifted_section_len) * top_sents_mask)
+
+            pre_idx = ((pre_idx+1) * top_sents_mask) - 1
+
+            pre_idx = torch.where(pre_idx > -1, sent_real_ids[pre_idx], 10000000)
+            end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:,:,:pre_idx.size(-1)])
+
+            # sort ids
+            pre_idx = pre_idx.sort()[0]
+            end_pre_ids = end_pre_ids.sort()[0]
+
+            sections_sentence_encoding = []
+            selected_sent_embeddings = []
+
+            for l in range(pre_idx.size(1)):
+                # import pdb;
+                # pdb.set_trace()
+                if top_sents_mask[l].float().sum() == 0:
+                    continue
+                section_sent_encoding = []
+                start_idxs = pre_idx[0, l]
+                end_idxs = end_pre_ids[0, l]
+
+                for ll in range(start_idxs.size(-1)):
                     # import pdb;pdb.set_trace()
 
-                try:
-                    sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True, padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
-                except Exception as ee:
-                    print(ee)
-                    print(doc_ids)
+                    if start_idxs[ll] > 10000000 - 1:
+                        continue
+                    try:
+                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]+1]
+                    except:
+                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
 
+                    selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
+                    section_sent_encoding.append(sent_encoding)
                 try:
-                    sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+                    sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
                 except:
                     import pdb;pdb.set_trace()
 
-                # sects_batch_sent_lens.sum(dim=2)
-                # updating sample_sect_dist based on the total number of tokens in each section.
+            sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
+            selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
 
-                updated_sect_dist = (sample_sect_dist - sects_batch_sent_lens.sum(dim=2))
-                fulfilled_sects = updated_sect_dist > 0
-
-                if LIMIT < input_ids.size(-1) and ((~fulfilled_sects).float().sum()) > 0 and fulfilled_sects.float().sum() != fulfilled_sects.size(1):
-                    remaining_toks = (updated_sect_dist * fulfilled_sects).sum()
-                    revisit_section_dist = (sect_scores * ~fulfilled_sects) / (sect_scores * ~fulfilled_sects).sum()
-                    sample_sect_dist_v2 = torch.round(revisit_section_dist * remaining_toks)
-                    sample_sect_dist += sample_sect_dist_v2
-                    sample_sect_dist = torch.where(fulfilled_sects, sample_sect_dist-updated_sect_dist, sample_sect_dist)
-
-                sect_sent_mask = (sects_batch_sent_lens > 0).float()
-
-                top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
-
-                top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
-                top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
-
-                sect_sent_n_selects = (~((torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
-                top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x], padding_value=-1).t()) != -1).cuda()
-                pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
-
-                section_len_cum = torch.cumsum(section_len, dim=-1)
-                shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
-                # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
-                shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
-                pre_idx = (((pre_idx) + shifted_section_len) * top_sents_mask)
-
-                pre_idx = ((pre_idx+1) * top_sents_mask) - 1
-
-                pre_idx = torch.where(pre_idx > -1, sent_real_ids[pre_idx], 10000000)
-                end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:,:,:pre_idx.size(-1)])
-
-                # sort ids
-                pre_idx = pre_idx.sort()[0]
-                end_pre_ids = end_pre_ids.sort()[0]
-
-                sections_sentence_encoding = []
-                selected_sent_embeddings = []
-
-                for l in range(pre_idx.size(1)):
-                    # import pdb;
-                    # pdb.set_trace()
-                    if top_sents_mask[l].float().sum() == 0:
-                        continue
-                    section_sent_encoding = []
-                    start_idxs = pre_idx[0, l]
-                    end_idxs = end_pre_ids[0, l]
-
-                    for ll in range(start_idxs.size(-1)):
-                        # import pdb;pdb.set_trace()
-
-                        if start_idxs[ll] > 10000000 - 1:
-                            continue
-                        try:
-                            sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]+1]
-                        except:
-                            sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
-
-                        selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
-                        section_sent_encoding.append(sent_encoding)
-                    try:
-                        sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
-                    except:
-                        import pdb;pdb.set_trace()
-
-                sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
-                selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
-
-                if self.is_hier:
-                    selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
-                                                             # torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda()).last_hidden_state
-                                                             torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
+            if self.is_hier:
+                selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
+                                                         # torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda()).last_hidden_state
+                                                         torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
 
 
-            if topic_model_global_outputs is None:
-                prior_mean, prior_variance, posterior_mean, posterior_variance, \
-                posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
-                                                                                                   encoder_outputs[0].mean(
-                                                                                                       dim=1),
-                                                                                                   labels=None)  # X_contexual is the source embedding
-            else:
-                prior_mean, prior_variance, posterior_mean, posterior_variance, \
-                posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
+        if topic_model_global_outputs is None:
+            prior_mean, prior_variance, posterior_mean, posterior_variance, \
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
+                                                                                               encoder_outputs[0].mean(
+                                                                                                   dim=1),
+                                                                                               labels=None)  # X_contexual is the source embedding
+        else:
+            prior_mean, prior_variance, posterior_mean, posterior_variance, \
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
 
-            """""
-            
-            """
+        """""
+        
+        """
 
-            bsz = 1
+        bsz = 1
 
-            if decoder_input_ids is not None:
-                n_summary = len(decoder_input_ids[0])
-            else: # in validation/test we will generate one summary
-                n_summary = 1
-
-
-            # creating summary attention mask; no need for summ_attn_mask in val/test
-            summ_attn_mask = None
-            if bsz * n_summary > 1 and self.training:
-                summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
-
-            if self.training: # in validation and test we will generate only one summary + if batching is needed in training
-                decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
+        if decoder_input_ids is not None:
+            n_summary = len(decoder_input_ids[0])
+        else: # in validation/test we will generate one summary
+            n_summary = 1
 
 
-            """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-            """"""""""""""""""""" Section encoding """"""""""""""""""""""""
-            """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        # creating summary attention mask; no need for summ_attn_mask in val/test
+        summ_attn_mask = None
+        if bsz * n_summary > 1 and self.training:
+            summ_attn_mask = (pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=-1) != -1).to(attention_mask.dtype)
+
+        if self.training: # in validation and test we will generate only one summary + if batching is needed in training
+            decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
 
 
-            # if encoder_section_outputs is None:
-            #     section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
-            #     section_pre_encodings = torch.index_select(encoder_outputs[0], 1, section_token_indices)
-            #
-            # if encoder_section_outputs is None:
-            #     section_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
-            ##     encoder_section_outputs = self.encoder_section(hidden_states=section_pre_encodings, topic_emb=topic_emb_sct.unsqueeze(0), attention_mask=section_mask)[0]
-            #
-            # else:
-            ##     encoder_section_outputs is not none.
-                # section_mask = torch.BoolTensor([True] * encoder_section_outputs.size(1)).unsqueeze(0).repeat(encoder_section_outputs.size(0), 1).cuda()
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        """"""""""""""""""""" Section encoding """"""""""""""""""""""""
+        """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-            # if not self.training:
-            #     import pdb;pdb.set_trace()
 
-            decoder_outputs = self.decoder(
-                input_ids=decoder_input_ids,
-                section_encodings=selected_sent_embeddings.cuda(),
-                attention_mask=decoder_attention_mask,
-                encoder_attention_mask_section=torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda(),
-                summ_attn_mask=summ_attn_mask,
-                encoder_hidden_states=sections_sentence_encoding.cuda(),
-                encoder_attention_mask=torch.ones(sections_sentence_encoding.size(0), sections_sentence_encoding.size(1)).cuda(),
-                head_mask=decoder_head_mask,
-                cross_attn_head_mask=cross_attn_head_mask,
-                past_key_values=past_key_values,
-                inputs_embeds=decoder_inputs_embeds,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
+        # if encoder_section_outputs is None:
+        #     section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
+        #     section_pre_encodings = torch.index_select(encoder_outputs[0], 1, section_token_indices)
+        #
+        # if encoder_section_outputs is None:
+        #     section_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
+        ##     encoder_section_outputs = self.encoder_section(hidden_states=section_pre_encodings, topic_emb=topic_emb_sct.unsqueeze(0), attention_mask=section_mask)[0]
+        #
+        # else:
+        ##     encoder_section_outputs is not none.
+            # section_mask = torch.BoolTensor([True] * encoder_section_outputs.size(1)).unsqueeze(0).repeat(encoder_section_outputs.size(0), 1).cuda()
 
-            if not return_dict:
-                return decoder_outputs + encoder_outputs
+        # if not self.training:
+        #     import pdb;pdb.set_trace()
 
-            return LEDSeq2SeqModelOutput(
-                last_hidden_state=decoder_outputs.last_hidden_state,
-                topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
-                past_key_values=decoder_outputs.past_key_values,
-                sent_scores=sent_scores if sent_scores is not None else None,
-                sect_scores=sect_scores if sect_scores is not None else None,
-                decoder_hidden_states=decoder_outputs.hidden_states,
-                decoder_attentions=decoder_outputs.attentions,
-                cross_attentions=decoder_outputs.cross_attentions,
-                encoder_last_hidden_state=encoder_outputs.last_hidden_state,
-                encoder_hidden_states=encoder_outputs.hidden_states,
-                encoder_attentions=encoder_outputs.attentions,
-                encoder_global_attentions=encoder_outputs.global_attentions,
-            )
+        decoder_outputs = self.decoder(
+            input_ids=decoder_input_ids,
+            section_encodings=selected_sent_embeddings.cuda(),
+            attention_mask=decoder_attention_mask,
+            encoder_attention_mask_section=torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda(),
+            summ_attn_mask=summ_attn_mask,
+            encoder_hidden_states=sections_sentence_encoding.cuda(),
+            encoder_attention_mask=torch.ones(sections_sentence_encoding.size(0), sections_sentence_encoding.size(1)).cuda(),
+            head_mask=decoder_head_mask,
+            cross_attn_head_mask=cross_attn_head_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=decoder_inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        if not return_dict:
+            return decoder_outputs + encoder_outputs
+
+        # import pdb;pdb.set_trace()
+        return LEDSeq2SeqModelOutput(
+            last_hidden_state=decoder_outputs.last_hidden_state,
+            topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
+            past_key_values=decoder_outputs.past_key_values,
+            sent_scores=sent_scores if sent_scores is not None else None,
+            sect_scores=sect_scores if sect_scores is not None else None,
+            decoder_hidden_states=decoder_outputs.hidden_states,
+            decoder_attentions=decoder_outputs.attentions,
+            cross_attentions=decoder_outputs.cross_attentions,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+            encoder_hidden_states=encoder_outputs.hidden_states,
+            encoder_attentions=encoder_outputs.attentions,
+            encoder_global_attentions=encoder_outputs.global_attentions,
+        )
 
 
 class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin):
@@ -1681,6 +1668,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             )
 
         elif self.task == 'all':
+            # import pdb;pdb.set_trace()
             lm_logits = self.lm_head(outputs[0]) + self.final_logits_bias
 
             masked_lm_loss = None
@@ -1940,7 +1928,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     pretrained_model_name_or_path, filename=filename, revision=revision, mirror=mirror
                 )
 
-                archive_file_roberta = hf_bucket_url("roberta-large", filename=filename, revision=revision, mirror=mirror )
+                # archive_file_roberta = hf_bucket_url("roberta-large", filename=filename, revision=revision, mirror=mirror )
+                # archive_file_ext = hf_bucket_url("/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/",
+                #                                  filename=filename, revision=revision, mirror=mirror )
 
 
             try:
@@ -1956,8 +1946,18 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     user_agent=user_agent,
                 )
 
-                resolved_archive_file_roberta = cached_path(
-                    archive_file_roberta,
+                # resolved_archive_file_roberta = cached_path(
+                #     archive_file_roberta,
+                #     cache_dir=cache_dir,
+                #     force_download=force_download,
+                #     proxies=proxies,
+                #     resume_download=resume_download,
+                #     local_files_only=local_files_only,
+                #     use_auth_token=use_auth_token,
+                #     user_agent=user_agent,
+                # )
+                resolved_archive_file_ext = cached_path(
+                    '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/pytorch_model.bin',
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -1966,6 +1966,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                 )
+
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
@@ -2082,7 +2083,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             if not is_sharded and state_dict is None:
                 # Time to load the checkpoint
                 state_dict = load_state_dict(resolved_archive_file)
-                state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
+                state_dict_ext = load_state_dict(resolved_archive_file_ext)
+
+                # state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
 
             # set dtype to instantiate the model under:
             # 1. If torch_dtype is not None, we use that dtype
@@ -2125,6 +2128,16 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
         with ContextManagers(init_contexts):
             model = cls(config, use_topic=use_topic, task=task, *model_args, **model_kwargs)
+            model.resize_token_embeddings(50267) # be causious
+            # tokenizer = TGSumTokenizer.from_pretrained(
+            #     '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/',
+            #     cache_dir=model_args.cache_dir,
+            #     use_fast=model_args.use_fast_tokenizer,
+            #     revision=model_args.model_revision,
+            #     use_auth_token=True if model_args.use_auth_token else None,
+            # )
+            # model.resize_token_embeddings(len(tokenizer))
+
 
         # import pdb;pdb.set_trace()
         # restore default dtype
@@ -2154,7 +2167,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         #     except:
         #         pass
         #
-        # state_dict.update(added_params)
+        state_dict.update(added_params)
+        state_dict.update(state_dict_ext)
+        print('Extractive weights loaded...')
 
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,

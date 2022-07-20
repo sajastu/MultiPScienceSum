@@ -469,7 +469,8 @@ def main():
     #TGSumTokenizer
 
     tokenizer = TGSumTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        # model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/',
         cache_dir=model_args.cache_dir,
         use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
@@ -479,7 +480,6 @@ def main():
     model, loading_info = TGSumForConditionalGeneration.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        task=model_args.task,
         use_topic=True,
         config=config,
         cache_dir=model_args.cache_dir,
@@ -490,8 +490,8 @@ def main():
     model.config = config
 
     # add <sect> labels...
-    special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
-    tokenizer.add_special_tokens(special_tokens_dict)
+    # special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
+    # tokenizer.add_special_tokens(special_tokens_dict)
     # intialize word embeddings...
 
     model.resize_token_embeddings(len(tokenizer))
@@ -960,7 +960,6 @@ def main():
     # Initialize our Trainer
     trainer = TGSumTrainer(
         model=model,
-        task=model_args.task,
         args=training_args,
         loading_info=loading_info,
         train_dataset=train_dataset if training_args.do_train else None,
