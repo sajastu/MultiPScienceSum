@@ -27,7 +27,6 @@ class GenerationMixin(GenerationMixin):
     def _prepare_reduced_encoder_outputs(self, encoder_outputs, input_ids, section_len):
 
         # if input_ids[1]
-
         sent_repr = self.get_repr_from_index_gen(encoder_outputs[0],
                                              index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
 
@@ -40,88 +39,130 @@ class GenerationMixin(GenerationMixin):
             sent_scorer_ln(sent_repr)
         ).squeeze(-1)
 
+
         sect_scorer_ln = self.get_sect_scorer()
         sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
                                                   dim=-2).squeeze(-1)
 
         LIMIT = 3072  # tokens
-        sample_sect_dist = torch.round(
-            torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
-        sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
-        end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
 
-        sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
-        sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True,
-                                               padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
+        if self.SAMPLING_FROM=='section':
+            sample_sect_dist = torch.round(
+                torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
+            sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+            end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
 
-        sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True,
-                                             padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
-        sect_sent_mask = (sects_batch_sent_lens > 0).float()
+            sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+            sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True,
+                                                   padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
 
-        top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
-        # test
-        top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
-        top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
+            sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True,
+                                                 padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
+            sect_sent_mask = (sects_batch_sent_lens > 0).float()
 
-        sect_sent_n_selects = (~(
-                    (torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(
-                top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
-        top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x],
-                                        padding_value=-1).t()) != -1).cuda()
-        pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
+            top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
+            # test
+            top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
+            top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
 
-        section_len_cum = torch.cumsum(section_len, dim=-1)
-        shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
-        # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
-        shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
-        pre_idx = (pre_idx + shifted_section_len) * top_sents_mask
+            sect_sent_n_selects = (~(
+                        (torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(
+                    top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
+            top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x],
+                                            padding_value=-1).t()) != -1).cuda()
+            pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
 
-        pre_idx = torch.where(pre_idx > 0, sent_real_ids[pre_idx], 10000000)
-        end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:, :, :pre_idx.size(-1)])
+            section_len_cum = torch.cumsum(section_len, dim=-1)
+            shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
+            # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
+            shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
+            pre_idx = (pre_idx + shifted_section_len) * top_sents_mask
 
-        # sort ids
-        pre_idx = pre_idx.sort()[0]
-        end_pre_ids = end_pre_ids.sort()[0]
+            pre_idx = torch.where(pre_idx > 0, sent_real_ids[pre_idx], 10000000)
+            end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:, :, :pre_idx.size(-1)])
 
-        sections_sentence_encoding = []
-        selected_sent_embeddings = []
+            # sort ids
+            pre_idx = pre_idx.sort()[0]
+            end_pre_ids = end_pre_ids.sort()[0]
 
-        for l in range(pre_idx.size(1)):
-            # import pdb;
-            # pdb.set_trace()
+            sections_sentence_encoding = []
+            selected_sent_embeddings = []
 
-            section_sent_encoding = []
-            start_idxs = pre_idx[0, l]
-            end_idxs = end_pre_ids[0, l]
+            for l in range(pre_idx.size(1)):
+                # import pdb;
+                # pdb.set_trace()
 
-            if top_sents_mask[l].float().sum() == 0:
-                continue
+                section_sent_encoding = []
+                start_idxs = pre_idx[0, l]
+                end_idxs = end_pre_ids[0, l]
 
-            for ll in range(start_idxs.size(-1)):
-                # import pdb;pdb.set_trace()
-                if start_idxs[ll] > 10000000 - 1:
+                if top_sents_mask[l].float().sum() == 0:
                     continue
+
+                for ll in range(start_idxs.size(-1)):
+                    # import pdb;pdb.set_trace()
+                    if start_idxs[ll] > 10000000 - 1:
+                        continue
+                    try:
+                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll] + 1]
+                    except:
+                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
+
+                    selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
+                    section_sent_encoding.append(sent_encoding)
                 try:
-                    sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll] + 1]
+                    sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
                 except:
-                    sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
+                    import pdb;pdb.set_trace()
+            sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
+            selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=0).cuda()
 
-                selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
-                section_sent_encoding.append(sent_encoding)
-            try:
-                sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
-            except:
-                import pdb;pdb.set_trace()
-        sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
-        selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
+            if self.is_hier():
+                hier_encoder = self.get_hier_encoder()
+                selected_sent_embeddings = hier_encoder(selected_sent_embeddings,
+                                                         torch.ones(selected_sent_embeddings.size(0),
+                                                                    selected_sent_embeddings.size(1)).bool().cuda())
 
-        if self.is_hier():
-            hier_encoder = self.get_hier_encoder()
-            selected_sent_embeddings = hier_encoder(selected_sent_embeddings,
-                                                     torch.ones(selected_sent_embeddings.size(0),
-                                                                selected_sent_embeddings.size(1)).bool().cuda())
+            return sections_sentence_encoding, selected_sent_embeddings
 
-        return sections_sentence_encoding, selected_sent_embeddings
+        else:
+            sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+            end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+
+            sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+
+            top_sents_ids = torch.argsort(sent_scores, descending=True)
+            top_sents_len = torch.zeros_like(sent_len)
+
+            top_sents_len.scatter_(1, top_sents_ids, sent_len)
+            top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
+            top_sents_ids = top_sents_ids[:, :top_sents_included]
+
+            top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
+            sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
+            top_sens_end_ids = top_sents_start_ids + sent_len
+
+            masked_top_sents_input = torch.zeros_like(input_ids)
+            num_of_masked = 0
+            selected_sents_encodings = []
+            for start_idx, end_idx in zip(top_sents_start_ids[0], top_sens_end_ids[0]):
+                masked_top_sents_input[:, start_idx:end_idx] = 1
+                num_of_masked += len(masked_top_sents_input[0, start_idx:end_idx])
+                selected_sents_encodings.append(encoder_outputs[0][:,start_idx])
+            # import pdb;pdb.set_trace()
+
+            selected_sents_encodings = torch.cat(selected_sents_encodings, dim=0).cuda()
+            # torch.where(masked_top_sents_input > -1, input_ids,)
+            mask = masked_top_sents_input.unsqueeze(-1).expand_as(encoder_outputs[0]).bool()
+            reduced_encoder_outputs = torch.masked_select(encoder_outputs[0], mask).view(1, num_of_masked, -1)
+            if self.is_hier():
+                hier_encoder = self.get_hier_encoder()
+                selected_sents_encodings = selected_sents_encodings.unsqueeze(0)
+                selected_sents_encodings = hier_encoder(selected_sents_encodings,
+                                                         torch.ones(selected_sents_encodings.size(0),
+                                                                    selected_sents_encodings.size(1)).bool().cuda())
+
+            return reduced_encoder_outputs, selected_sents_encodings
 
 
     def _prepare_encoder_decoder_kwargs_for_generation(

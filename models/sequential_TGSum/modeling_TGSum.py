@@ -648,8 +648,7 @@ class TGSumDecoderLayer(nn.Module):
             hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
                 self.encoder_attn_section(
                     hidden_states=hidden_states,  # decoder query
-                    key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1,
-                                                                    1) if self.training else section_encoder_outputs,
+                    key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
                     attention_mask=encoder_attention_mask_section,
                     layer_head_mask=cross_attn_layer_head_mask,
                     past_key_value=cross_attn_past_key_value_section,
@@ -1002,7 +1001,7 @@ class TGSumDecoder(LEDDecoder):
 
 class TGSumModel(LEDModel):
 
-    def __init__(self, config: LEDConfig, use_topic=False, task='all'):
+    def __init__(self, config: LEDConfig, use_topic=False, sampling_from='all'):
 
         # config.prefix = 'led'
         # self.base_model_prefix = 'led'
@@ -1013,9 +1012,8 @@ class TGSumModel(LEDModel):
         self.sent_scorer = nn.Linear(config.d_model, 1)
         self.sect_scorer = nn.Linear(config.d_model, 1)
 
-        if self.is_all_task() or self.is_ext_task():
-            self.encoder = LEDEncoder(config, self.shared)
-            self.encoder.gradient_checkpointing = True
+        self.encoder = LEDEncoder(config, self.shared)
+        self.encoder.gradient_checkpointing = True
 
         self.decoder = TGSumDecoder(config, self.shared, use_topic=use_topic)
 
@@ -1035,6 +1033,7 @@ class TGSumModel(LEDModel):
                 # roberta_config.num_hidden_layers = 4
                 # self.hier_encoder = RobertaEncoder(roberta_config)
 
+        self.SAMPLING_FROM = sampling_from
         self.num_topics = 100
         self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
                                           infnet='combined', n_components=self.num_topics, model_type='prodLDA',
@@ -1119,31 +1118,6 @@ class TGSumModel(LEDModel):
 
     def get_repr_from_index(self, from_tensor, index):
         return from_tensor[:,index, :]
-
-
-    def pretrain_ext(
-            self,
-            input_ids=None,
-            sections_sentence_encoding=None,
-            encoder_outputs=None,
-
-    ):
-        sent_scores = None
-        sect_scores = None
-        if sections_sentence_encoding is None:
-            sent_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                 index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
-
-            section_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                    index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
-
-            sent_scores = torch.sigmoid(
-                self.sent_scorer(sent_repr)
-            ).squeeze(-1)
-
-            sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
-
-        return sect_scores, sent_scores
 
     def forward(
         self,
@@ -1257,121 +1231,152 @@ class TGSumModel(LEDModel):
 
 
             LIMIT = 3072  # tokens
-            sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
 
-            sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
-            end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+            if self.SAMPLING_FROM=='section':
+                sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
 
-            try:
-                sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
-            except:
-                print('found noncons')
-                # import pdb;pdb.set_trace()
+                sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+                end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
 
-            try:
-                sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True, padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
-            except Exception as ee:
-                print(ee)
-                print(doc_ids)
-
-            try:
-                sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
-            except:
-                import pdb;pdb.set_trace()
-
-            # sects_batch_sent_lens.sum(dim=2)
-            # updating sample_sect_dist based on the total number of tokens in each section.
-
-            updated_sect_dist = (sample_sect_dist - sects_batch_sent_lens.sum(dim=2))
-            fulfilled_sects = updated_sect_dist > 0
-
-            if LIMIT < input_ids.size(-1) and ((~fulfilled_sects).float().sum()) > 0 and fulfilled_sects.float().sum() != fulfilled_sects.size(1):
-                remaining_toks = (updated_sect_dist * fulfilled_sects).sum()
-                revisit_section_dist = (sect_scores * ~fulfilled_sects) / (sect_scores * ~fulfilled_sects).sum()
-                sample_sect_dist_v2 = torch.round(revisit_section_dist * remaining_toks)
-                sample_sect_dist += sample_sect_dist_v2
-                sample_sect_dist = torch.where(fulfilled_sects, sample_sect_dist-updated_sect_dist, sample_sect_dist)
-
-            sect_sent_mask = (sects_batch_sent_lens > 0).float()
-
-            top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
-
-            top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
-            top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
-
-            sect_sent_n_selects = (~((torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
-            top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x], padding_value=-1).t()) != -1).cuda()
-            pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
-
-            section_len_cum = torch.cumsum(section_len, dim=-1)
-            shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
-            # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
-            shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
-            pre_idx = (((pre_idx) + shifted_section_len) * top_sents_mask)
-
-            pre_idx = ((pre_idx+1) * top_sents_mask) - 1
-
-            pre_idx = torch.where(pre_idx > -1, sent_real_ids[pre_idx], 10000000)
-            end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:,:,:pre_idx.size(-1)])
-
-            # sort ids
-            pre_idx = pre_idx.sort()[0]
-            end_pre_ids = end_pre_ids.sort()[0]
-
-            sections_sentence_encoding = []
-            selected_sent_embeddings = []
-
-            for l in range(pre_idx.size(1)):
-                # import pdb;
-                # pdb.set_trace()
-                if top_sents_mask[l].float().sum() == 0:
-                    continue
-                section_sent_encoding = []
-                start_idxs = pre_idx[0, l]
-                end_idxs = end_pre_ids[0, l]
-
-                for ll in range(start_idxs.size(-1)):
+                try:
+                    sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+                except:
+                    print('found noncons')
                     # import pdb;pdb.set_trace()
 
-                    if start_idxs[ll] > 10000000 - 1:
-                        continue
-                    try:
-                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]+1]
-                    except:
-                        sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
-
-                    selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
-                    section_sent_encoding.append(sent_encoding)
                 try:
-                    sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
+                    sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True, padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
+                except Exception as ee:
+                    print(ee)
+                    print(doc_ids)
+
+                try:
+                    sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
                 except:
                     import pdb;pdb.set_trace()
 
-            sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
-            selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
+                # sects_batch_sent_lens.sum(dim=2)
+                # updating sample_sect_dist based on the total number of tokens in each section.
 
-            if self.is_hier:
-                selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
-                                                         # torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda()).last_hidden_state
-                                                         torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
+                updated_sect_dist = (sample_sect_dist - sects_batch_sent_lens.sum(dim=2))
+                fulfilled_sects = updated_sect_dist > 0
+
+                if LIMIT < input_ids.size(-1) and ((~fulfilled_sects).float().sum()) > 0 and fulfilled_sects.float().sum() != fulfilled_sects.size(1):
+                    remaining_toks = (updated_sect_dist * fulfilled_sects).sum()
+                    revisit_section_dist = (sect_scores * ~fulfilled_sects) / (sect_scores * ~fulfilled_sects).sum()
+                    sample_sect_dist_v2 = torch.round(revisit_section_dist * remaining_toks)
+                    sample_sect_dist += sample_sect_dist_v2
+                    sample_sect_dist = torch.where(fulfilled_sects, sample_sect_dist-updated_sect_dist, sample_sect_dist)
+
+                sect_sent_mask = (sects_batch_sent_lens > 0).float()
+
+                top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
+
+                top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
+                top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
+
+                sect_sent_n_selects = (~((torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
+                top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x], padding_value=-1).t()) != -1).cuda()
+                pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
+
+                section_len_cum = torch.cumsum(section_len, dim=-1)
+                shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
+                # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
+                shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
+                pre_idx = (((pre_idx) + shifted_section_len) * top_sents_mask)
+
+                pre_idx = ((pre_idx+1) * top_sents_mask) - 1
+
+                pre_idx = torch.where(pre_idx > -1, sent_real_ids[pre_idx], 10000000)
+                end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:,:,:pre_idx.size(-1)])
+
+                # sort ids
+                pre_idx = pre_idx.sort()[0]
+                end_pre_ids = end_pre_ids.sort()[0]
+
+                sections_sentence_encoding = []
+                selected_sent_embeddings = []
+
+                for l in range(pre_idx.size(1)):
+                    # import pdb;
+                    # pdb.set_trace()
+                    if top_sents_mask[l].float().sum() == 0:
+                        continue
+                    section_sent_encoding = []
+                    start_idxs = pre_idx[0, l]
+                    end_idxs = end_pre_ids[0, l]
+
+                    for ll in range(start_idxs.size(-1)):
+                        # import pdb;pdb.set_trace()
+
+                        if start_idxs[ll] > 10000000 - 1:
+                            continue
+                        try:
+                            sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]+1]
+                        except:
+                            sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
+
+                        selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
+                        section_sent_encoding.append(sent_encoding)
+                    try:
+                        sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
+                    except:
+                        import pdb;pdb.set_trace()
+
+                sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
+                selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
+
+                if self.is_hier:
+                    selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
+                                                             # torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda()).last_hidden_state
+                                                             torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
 
 
-        if topic_model_global_outputs is None:
-            prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
-                                                                                               encoder_outputs[0].mean(
-                                                                                                   dim=1),
-                                                                                               labels=None)  # X_contexual is the source embedding
-        else:
-            prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
+            else:
 
-        """""
-        
-        """
+                sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+                end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+
+                sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+
+                top_sents_ids = torch.argsort(sent_scores, descending=True)
+                top_sents_len = torch.zeros_like(sent_len)
+
+                top_sents_len.scatter_(1, top_sents_ids, sent_len)
+                top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
+                top_sents_ids = top_sents_ids[:, :top_sents_included]
+
+
+                top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
+                sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
+                top_sens_end_ids = top_sents_start_ids + sent_len
+
+                masked_top_sents_input = torch.zeros_like(input_ids)
+                num_of_masked= 0
+                selected_sent_embeddings = []
+                for start_idx, end_idx in zip(top_sents_start_ids[0], top_sens_end_ids[0]):
+                    masked_top_sents_input[:, start_idx:end_idx] = 1
+                    num_of_masked += len(masked_top_sents_input[0, start_idx:end_idx])
+                    selected_sent_embeddings.append(encoder_outputs[0][:, start_idx])
+
+                try:
+                    selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=0)
+                except:
+                    print(doc_ids)
+                    import pdb;pdb.set_trace()
+
+                selected_sent_embeddings = selected_sent_embeddings.unsqueeze(0)
+                # torch.where(masked_top_sents_input > -1, input_ids,)
+                mask = masked_top_sents_input.unsqueeze(-1).expand_as(encoder_outputs[0]).bool()
+                sections_sentence_encoding = torch.masked_select(encoder_outputs[0], mask).view(1, num_of_masked, -1)
+                if self.is_hier:
+                    selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings, torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
+
+            """""
+            
+            """
 
         bsz = 1
-
         if decoder_input_ids is not None:
             n_summary = len(decoder_input_ids[0])
         else: # in validation/test we will generate one summary
@@ -1385,6 +1390,7 @@ class TGSumModel(LEDModel):
 
         if self.training: # in validation and test we will generate only one summary + if batching is needed in training
             decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
+
 
 
         """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -1449,8 +1455,11 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     # _keys_to_ignore_on_load_missing = [r"final_logits_bias", r"lm_head\.weight"]
     def __init__(self, config: LEDConfig, use_topic=True, task='all'):
         super().__init__(config)
-        self.led = TGSumModel(config, use_topic=use_topic, task=task)
+        self.SAMPLING_FROM = 'all'
+
+        self.led = TGSumModel(config, use_topic=use_topic, sampling_from=self.SAMPLING_FROM)
         self.task = task
+
         global do_topic
         do_topic = use_topic
         self.use_topic = use_topic
@@ -2128,7 +2137,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
         with ContextManagers(init_contexts):
             model = cls(config, use_topic=use_topic, task=task, *model_args, **model_kwargs)
-            model.resize_token_embeddings(50267) # be causious
+            # model.resize_token_embeddings(50267) # be causious
             # tokenizer = TGSumTokenizer.from_pretrained(
             #     '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/',
             #     cache_dir=model_args.cache_dir,
@@ -2168,8 +2177,8 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         #         pass
         #
         state_dict.update(added_params)
-        state_dict.update(state_dict_ext)
-        print('Extractive weights loaded...')
+        # state_dict.update(state_dict_ext)
+        # print('Extractive weights loaded...')
 
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,

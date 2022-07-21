@@ -10,15 +10,15 @@ export HF_DATASETS_CACHE=/disk0/$USER/.cache/huggingface
 # 4190
 # 8380
 #python -m torch.distributed.launch --nproc_per_node=2 run_summarization.py \
-CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
+CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --model_name_or_path $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-6144-PrepConc \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-6144-AllSents-PrepConc-test \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
     --weight_decay 0.01 \
     --adam_beta2 0.999 \
-    --num_train_epochs 5 \
+    --num_train_epochs 2 \
     --gradient_accumulation_steps 1 \
     --save_total_limit 5 \
     --text_column source \
@@ -31,12 +31,10 @@ CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --eval_steps 4190 --save_steps 4190 \
     --train_file $DS_DIR/train-sectScoreV1.parquet \
     --validation_file $DS_DIR/val-sectScoreV1.parquet \
-    --test_file $DS_DIR/val-sectScoreV1.parquet \
     --do_train \
     --do_eval \
-    --do_predict \
     --report_to none \
-    --run_name mup-led-arxiv-6144-ExtFinetuned-PrepConc \
+    --run_name mup-led-arxiv-6144-AllSents-PrepConc-test \
     --max_source_length 6144 \
     --preprocessing_num_workers 4 \
     --metric_for_best_model rougeL_f \

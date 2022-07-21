@@ -310,6 +310,11 @@ class TGSumTrainer(Seq2SeqTrainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
+                # import pdb;pdb.set_trace()
+                if step < 1380:
+                    continue
+                # else:
+                #     steps_trained_progress_bar.update(step)
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
@@ -323,6 +328,7 @@ class TGSumTrainer(Seq2SeqTrainer):
                     steps_trained_progress_bar.close()
                     steps_trained_progress_bar = None
 
+                # print(step)
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 

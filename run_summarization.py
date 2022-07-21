@@ -819,8 +819,11 @@ def main():
 
             for rouge_metric in metrics:
                 scores = scorer.score(summ.strip(), pred.strip())
-                results_f[rouge_metric] = scores[rouge_metric].fmeasure
-                results_r[rouge_metric] = scores[rouge_metric].recall
+                try:
+                    results_f[rouge_metric] = scores[rouge_metric].fmeasure
+                    results_r[rouge_metric] = scores[rouge_metric].recall
+                except:
+                    pass
 
 
             if p_id not in before_aggregated.keys():
