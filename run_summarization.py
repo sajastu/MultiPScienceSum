@@ -664,7 +664,7 @@ def main():
         #     doc_ids=src_ids,
         #     section_headings=headings,
         #     topic_info_tuple=topic_info_tuple,
-        #     ext_labels=ext_labels,
+        #     ext_labels=ext_labels,#
         #     section_scores=section_scores,
         #     labeling=model_args.labeling,
         #  )
