@@ -1230,7 +1230,7 @@ class TGSumModel(LEDModel):
             sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
 
 
-            LIMIT = 3072  # tokens
+            LIMIT = 2048  # tokens
 
             if self.SAMPLING_FROM=='section':
                 sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
@@ -1329,7 +1329,8 @@ class TGSumModel(LEDModel):
                 if self.is_hier:
                     selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
                                                              # torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda()).last_hidden_state
-                                                             torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
+                                                             torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda()
+                                                                 )
 
 
             else:
@@ -1340,9 +1341,10 @@ class TGSumModel(LEDModel):
                 sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
 
                 top_sents_ids = torch.argsort(sent_scores, descending=True)
-                top_sents_len = torch.zeros_like(sent_len)
+                # top_sents_len = torch.zeros_like(sent_len)
 
-                top_sents_len.scatter_(1, top_sents_ids, sent_len)
+                # top_sents_len.scatter_(1, top_sents_ids, sent_len)
+                top_sents_len = torch.index_select(sent_len, 1, top_sents_ids[0])
                 top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
                 top_sents_ids = top_sents_ids[:, :top_sents_included]
 

@@ -53,7 +53,7 @@ from transformers import (
     MBartTokenizerFast,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
-    set_seed, LEDForConditionalGeneration, LEDConfig,
+    set_seed, LEDForConditionalGeneration, LEDConfig, BartConfig,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
@@ -83,11 +83,11 @@ def set_global_logging_level(level=logging.ERROR, prefices=[""]):
     """
     prefix_re = re.compile(fr'^(?:{ "|".join(prefices) })')
     for name in logging.root.manager.loggerDict:
-        # print(name)
+        print(name)
         if re.match(prefix_re, name):
             logging.getLogger(name).setLevel(level)
 
-set_global_logging_level(logging.ERROR, ["transformers.models.led.modeling_led", "nlp", "torch", "tensorflow", "tensorboard", "wandb"])
+set_global_logging_level(logging.ERROR, ["transformers.models.led.modeling_led", "models.tokenization_TGSum", "nlp", "torch", "tensorflow", "tensorboard", "wandb"])
 
 try:
     os.makedirs('descriptions/')
@@ -123,11 +123,11 @@ class ModelArguments:
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
-    task: str = field(
+    labeling: str = field(
         default='all',
         metadata={
-            "help": "Which task we want to do?",
-            'choices': ["all", "ext", "topic"]
+            "help": "Which labeling we want to do?",
+            'choices': ["dynamic", "pre-selected"]
         },
     )
     config_name: Optional[str] = field(
@@ -600,10 +600,12 @@ def main():
 
     def preprocess_function(examples):
         # remove pairs where at least one record is None
-        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section, ext_labels, section_scores, headings = [], [], [], [], [], [], [], [], []
+        inputs, targets, src_ids, tgt_ids, topic_info_global, topic_info_section, ext_labels, section_scores, \
+        headings, inputs_tokenized,target_tokenized =[], [], [], [], [], [], [], [], [], [], []
         for i in range(len(examples[text_column])):
             if examples[text_column][i] is not None and examples[summary_column][i] is not None:
                 input_sents = []
+                input_sents_tokenized = []
                 section_heading = []
                 for sect in examples[text_column][i]:
                     sent_sects = []
@@ -612,9 +614,18 @@ def main():
                               .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
                               .replace('\n', ' ').strip().lower())
                     input_sents.append(' <SENTTT> '.join(sent_sects.copy()))
+
+                for sect in examples[text_column + '_tokenized'][i]:
+                    sent_sects = []
+                    for sent in sect:
+                        sent_sects.append(sent)
+
+                    input_sents_tokenized.append(sent_sects.copy())
+
                 section_heading.append([e.split(' <COMBINED> ') for e in examples['section_headings'][i]])
                 headings.append(section_heading)
                 inputs.append(input_sents)
+                inputs_tokenized.append(input_sents_tokenized)
                 src_ids.append(examples["paper_id"][i])
                 # if examples["paper_id"][i] == "SP:bd9472600b9e7e4b407b0b2572179bc8cab7f272":
                 #     import pdb;pdb.set_trace()
@@ -626,11 +637,14 @@ def main():
                 valid_targets = [j for j, e in enumerate(examples[summary_column][i]) if len(e.strip())>0]
 
                 targets.extend([e.strip().lower() for j, e in enumerate(examples[summary_column][i]) if j in valid_targets])
+                target_tokenized.append([e.strip().lower() for j, e in enumerate(examples[summary_column][i]) if j in valid_targets])
                 tgt_ids.extend(len(valid_targets) * [examples["paper_id"][i]])
 
         topic_info_tuple = {"topic_info_global": topic_info_global}
         model_inputs = tokenizer(
             inputs,
+            # inputs_tokenized=inputs_tokenized,
+            # target_tokenized=target_tokenized,
             max_length=data_args.max_source_length,
             padding=padding,
             truncation=True,
@@ -639,6 +653,7 @@ def main():
             topic_info_tuple=topic_info_tuple,
             ext_labels=ext_labels,
             section_scores=section_scores,
+            labeling=model_args.labeling,
          )
         # import pdb;pdb.set_trace()
 

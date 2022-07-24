@@ -18,6 +18,8 @@ from rouge_score import rouge_scorer
 
 from data_processor.prep_util import _get_word_ngrams
 from transformers import LEDTokenizer
+from nltk.corpus import stopwords as stop_words
+sw = set(stop_words.words("english"))
 
 scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
 
@@ -104,9 +106,11 @@ def greedy_selection(doc, abstract, summary_size):
     bin_labels = []
 
     selected = []
+    selected_rg = []
     for s in range(summary_size):
         cur_max_rouge = max_rouge
-        cur_id = -1
+        cur_id = []
+        cur_rg_scores = []
         for i in range(len(sents)):
             if (i in selected):
                 continue
@@ -118,11 +122,25 @@ def greedy_selection(doc, abstract, summary_size):
             rouge_1 = cal_rouge(candidates_1, reference_1grams)['f']
             rouge_2 = cal_rouge(candidates_2, reference_2grams)['f']
             rouge_score = rouge_1 + rouge_2
-            if rouge_score > cur_max_rouge:
-                cur_max_rouge = rouge_score
-                cur_id = i
-        if (cur_id == -1):
+            if s == 0:
+                if rouge_score > cur_max_rouge:
+                    # cur_max_rouge = rouge_score
+                    # cur_id = i
+                    cur_id.append(i)
+                    selected_rg.append(rouge_score)
+                    cur_rg_scores.append(rouge_score)
+            else:
+                if rouge_score > cur_max_rouge:
+                    # cur_max_rouge = rouge_score
+                    # cur_id = i
 
+                    cur_id.append(i)
+                    selected_rg.append(rouge_score)
+                    cur_rg_scores.append(rouge_score)
+
+                    if len(cur_rg_scores) > 1:
+                        break
+        if (len(cur_id) == 0):
             for idx in range(len(doc_sents)):
                 if idx in selected:
                     bin_labels.append(1)
@@ -130,8 +148,17 @@ def greedy_selection(doc, abstract, summary_size):
                     bin_labels.append(0)
 
             return bin_labels
-        selected.append(cur_id)
-        max_rouge = cur_max_rouge
+        if s==0:
+            # first sentence of summary, should pick top 2 somehow...
+            cur_id_rg_scores = [(id, rg) for id, rg in zip(cur_id, cur_rg_scores)]
+            sorted_cur_id_rg = sorted(cur_id_rg_scores, key=lambda x: x[-1], reverse=True)
+            cur_id = [sorted_cur_id_rg[0][0]]
+            cur_rg_scores = [sorted_cur_id_rg[0][1]]
+            selected_rg = [sorted_cur_id_rg[0][1]]
+
+
+        max_rouge = np.max(cur_rg_scores)
+        selected.extend(cur_id)
 
 
     for idx in range(len(doc_sents)):
@@ -385,13 +412,13 @@ def is_abstract_intro_or_conc(heading, heading_keywords, sect_tokens):
 
 def is_bad_section(heading, sect_tokens):
 
-    if 'related work' in heading.lower():
+    if 'related work' in heading.lower() or 'appendix' in heading.lower() or 'appendices' in heading.lower() or 'proofs' in heading.lower():
         return True
 
     return False
 
 def _mp_process_instance(params):
-    paper_jobj, voc_wrapper, heading_keywords = params
+    paper_jobj, voc_wrapper, heading_keywords, debug = params
     sections_tokens = []
     # should process section by section ... dataset
     for index, paper_info in enumerate(paper_jobj['sections_txt_tokenized']):
@@ -407,21 +434,47 @@ def _mp_process_instance(params):
 
     sect_idx = 0
     hyp_sections = []
+    hyp_sections_sents_tokens = []
     hyp_sections_token_sents = []
     hyp_sections_txt = []
     hyp_sect_headings = []
+
+    # performing a section filtering phase prior to the main stage.
+    sections_tokens_tmp = []
     while sect_idx < len(sections_tokens):
+        sect_heading = sections_tokens[sect_idx][2]
+        sect_tokens = sections_tokens[sect_idx][1]
+
+        if '</latexit>' in sections_tokens[sect_idx][0]:
+            refined = re.sub('latexit.*.latexit', '', sections_tokens[sect_idx][0])
+            lst = list(sections_tokens[sect_idx])
+            lst[0] = refined
+            lst[1] = get_sentence_tokens(refined)
+            sections_tokens[sect_idx] = tuple(lst)
+
+        if is_bad_section(sect_heading, sect_tokens):
+            sect_idx += 1
+            continue
+        else:
+            sections_tokens_tmp.append(sections_tokens[sect_idx])
+            sect_idx += 1
+
+
+
+    sections_tokens = sections_tokens_tmp
+    sect_idx = 0
+
+    while sect_idx < len(sections_tokens):
+
         sect_tokens = sections_tokens[sect_idx][1]
 
         sect_heading = sections_tokens[sect_idx][2]
         s_idx = sect_idx
 
-        # if sect_heading is in Intro or Conclusion, take it as it is.
 
-        if is_bad_section(sect_heading, sect_tokens):
-            # import pdb;pdb.set_trace()
-            sect_idx += 1
-            continue
+        # if sect_heading is in Intro or Conclusion, take it as it is.
+        # if debug:
+        #     import pdb;pdb.set_trace()
 
         if is_abstract_intro_or_conc(sect_heading, heading_keywords, sect_tokens):
             hyp_sections.append((f'{sect_idx}', list(chain.from_iterable(sect_tokens))))
@@ -441,13 +494,21 @@ def _mp_process_instance(params):
                     combined_sect_txt = [s[0] for s in sections_tokens[s_idx:sect_idx+1]]
                     combined_sect_headings = [s[2] for s in sections_tokens[s_idx:sect_idx+1]]
                     hyp_sections.append((f'{s_idx}-{sect_idx}', list(chain.from_iterable(combined_sect))))
-                    hyp_sections_token_sents.append((f'{s_idx}-{sect_idx}', combined_sect))
+
+                    new_sect = []
+                    for sect_h in sections_tokens[s_idx:sect_idx + 1]:
+                        for sent1 in sect_h[1]:
+                            new_sect.append(sent1)
+
+                    hyp_sections_token_sents.append((f'{s_idx}-{sect_idx}', new_sect))
                     hyp_sections_txt.append(" ".join(combined_sect_txt))
                     hyp_sect_headings.append(' <COMBINED> '.join(combined_sect_headings))
 
                 elif sect_idx == len(sections_tokens) -1 :
                     hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[-1][1]))))
-                    hyp_sections_token_sents.append((f'{s_idx}', chain.from_iterable(sections_tokens[-1][1])))
+                    # import pdb;pdb.set_trace()
+
+                    hyp_sections_token_sents.append((f'{s_idx}', sections_tokens[s_idx][1]))
 
                     combined_sect_txt = sections_tokens[s_idx][0]
                     combined_sect_headings = sections_tokens[s_idx][2]
@@ -456,6 +517,7 @@ def _mp_process_instance(params):
 
                 else:
                     hyp_sections.append((f'{s_idx}', list(chain.from_iterable(sections_tokens[s_idx][1]))))
+
                     hyp_sections_token_sents.append((f'{s_idx}', sections_tokens[s_idx][1]))
                     combined_sect_txt = sections_tokens[s_idx][0]
                     hyp_sections_txt.append(combined_sect_txt)
@@ -465,6 +527,7 @@ def _mp_process_instance(params):
 
             else:
                 hyp_sections.append((f'{sect_idx}', list(chain.from_iterable(sect_tokens))))
+
                 hyp_sections_token_sents.append((f'{sect_idx}', sect_tokens))
                 combined_sect_txt = sections_tokens[sect_idx][0]
                 hyp_sections_txt.append(combined_sect_txt)
@@ -477,9 +540,11 @@ def _mp_process_instance(params):
     sect_boundaries = [h[0] for h in hyp_sections]
     hyp_sections = [h[1] for h in hyp_sections]
     # hyp_sections_txt = [' '.join(h) for h in hyp_sections]
+    # import pdb;pdb.set_trace()
     assert len(hyp_sections_txt) == len(hyp_sections), 'Discrep1: Topic section and sections'
 
     hyp_sections_token_sents = [h[1] for h in hyp_sections_token_sents]
+
 
     ext_labels = []
     sections_sents = []
@@ -487,6 +552,7 @@ def _mp_process_instance(params):
     sect_len = []
     masked_sections = []
     for sec_id, sect_tokens in enumerate(hyp_sections):
+        # import pdb;pdb.set_trace()
         ids = [voc_wrapper.w2i(x.lower()) for x in sect_tokens]
         tokenized_id = [x for x in ids if x is not None]
         for id in tokenized_id:
@@ -504,7 +570,20 @@ def _mp_process_instance(params):
                 section_ext_labels.append([0] * len(section_sents))
             else:
                 for summary in summaries:
-                    ext_labels_section_summary = greedy_selection(section_sents, summary, 10)
+                    section_sents_tmp = []
+                    for sent in section_sents:
+                        sent_toks_tmp = []
+                        for sent_tok in sent:
+                            if sent_tok.lower() not in sw:
+                                sent_toks_tmp.append(sent_tok.lower())
+
+                        section_sents_tmp.append(sent_toks_tmp)
+
+                    summary_tmp = summary.lower()
+                    for sww in sw:
+                        summary_tmp = summary_tmp.replace(f' {sww.lower()} ', ' ')
+
+                    ext_labels_section_summary = greedy_selection(section_sents_tmp, summary_tmp, 10)
                     section_ext_labels.append(ext_labels_section_summary)
             ext_labels.append(section_ext_labels.copy())
             b_data_dict["tokenized_ids"].append(tokenized_id)
@@ -514,8 +593,15 @@ def _mp_process_instance(params):
             masked_sections.append(False)
 
     # dropping masked sections
+    # import pdb;pdb.set_trace()
     hyp_sections_txt = np.array(hyp_sections_txt)[masked_sections].tolist()
     hyp_sect_headings = np.array(hyp_sect_headings)[masked_sections].tolist()
+    hyp_sections_token_sents_tmp = []
+    for j, tr in enumerate(masked_sections):
+        if tr == True:
+            hyp_sections_token_sents_tmp.append(hyp_sections_token_sents[j])
+
+    hyp_sections_token_sents = hyp_sections_token_sents_tmp
     # import pdb;pdb.set_trace()
 
 
@@ -541,6 +627,7 @@ def _mp_process_instance(params):
         'paper_id': paper_id,
         'section_boundaries': sect_boundaries,
         "section_text": hyp_sections_txt,
+        "section_sent_tokenized": hyp_sections_token_sents,
         "section_headings": hyp_sect_headings,
         "sections_sents": sections_sents,
         "ext_labels": ext_labels,
@@ -557,9 +644,9 @@ def _mp_process_instance(params):
     return dialogue_example
 
 
-def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapper, heading_keywords):
+def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapper, heading_keywords, debug=False):
 
-    json_file, args, save_file = params
+    json_file, _, save_file = params
 
     logger.info('Processing %s' % json_file)
     jobs = json.load(open(json_file))
@@ -571,13 +658,17 @@ def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapp
 
     mp_instances = []
 
-    for paper_jobj in tqdm(jobs, total=len(jobs), desc=f'Processing...'):
-        mp_instances.append((paper_jobj, voc_wrapper, heading_keywords))
+    if not debug:
+        for paper_jobj in tqdm(jobs, total=len(jobs), desc=f'Processing...'):
+            mp_instances.append((paper_jobj, voc_wrapper, heading_keywords, debug))
+    else:
+        mp_instances.append((jobs, voc_wrapper, heading_keywords, debug))
 
     pool = Pool(16)
 
-    # for mi in mp_instances:
-    #     _mp_process_instance(mi)
+    if debug:
+        for mi in mp_instances:
+            _mp_process_instance(mi)
 
     for dialogue_example in tqdm(pool.imap_unordered(_mp_process_instance, mp_instances), total=len(mp_instances)):
         file_counter_global['all'].update(dialogue_example['topic_info_global'].keys())
@@ -600,3 +691,4 @@ def _format_to_bert(params, file_counter_global, file_counter_section, voc_wrapp
     datasets = []
     gc.collect()
     return file_counter_global, file_counter_section
+

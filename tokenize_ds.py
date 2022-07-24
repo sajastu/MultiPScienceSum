@@ -1,3 +1,4 @@
+import argparse
 import glob
 import json
 import os
@@ -217,6 +218,7 @@ def is_bad_section(heading):
 def main():
     print("Preparing to process %s ..." % '/disk1/sajad/datasets/sci/mup')
     raw_files = glob.glob('/disk1/sajad/datasets/sci/mup' + '/*_complete.json')
+    # raw_files = glob.glob('/disk1/sajad/datasets/sci/mup/official_test/raw/testing_with_paper_release.jsonl')
     # open raw_files
     for file in raw_files:
         # if 'train' in file:
@@ -228,7 +230,7 @@ def main():
             for li in fR:
                 ent = json.loads(li)
                 paper_id = ent['paper_id']
-                paper_summary = ent['summary']
+                paper_summary = ent['summary'] if ent['summary']  is not None else 'This is official test sample hence no summary!!!!!'
 
                 # if paper_id != 'SP:23084f30a4183f6965ef97e4cba2082bf2fffd64':
                 #     continue
@@ -361,7 +363,9 @@ def main():
             new_dict_saved[paper_id] = saved_dict
 
         # now save the processed files....
-        appr_set = "train" if "train" in file.split("/")[-1] else "val"
+        # appr_set = "train" if "train" in file.split("/")[-1] else "test"
+        appr_set = file.split("/")[-1].replace('_complete.json', '').strip()
+
         WR_DIR = f'/disk1/sajad/datasets/sci/mup/single_tokenized_prep2/{appr_set}'
 
         try:
@@ -377,4 +381,8 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-prep_test", default='bert', type=bool)
+    args = parser.parse_args()
+
     main()

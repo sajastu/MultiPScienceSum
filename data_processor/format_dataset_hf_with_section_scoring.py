@@ -41,7 +41,28 @@ def _parse_paper(param):
     return ex
 
 def _cal_rg_sect(params):
-    p_id, sect_sents, sect_sents_tokenized, summaries, ext_labels = params
+    p_id, sect_sents, summaries, ext_labels = params
+    input_sents = []
+    for sect in sect_sents:
+        sent_sects = []
+        for sent in sect:
+            sent_sects.append(sent.replace(' </s>', '').replace(' <s>', '').replace(' <mask>', '') \
+                              .replace('<s>', '').replace('</s>', '').replace('<mask>', '') \
+                              .replace('\n', ' ').strip().lower())
+
+        SECT_SENTTS = ' <SENTTT> '.join(sent_sects.copy())
+        input_sents.append(SECT_SENTTS.split(' <SENTTT> '))
+
+    sect_sents = input_sents
+    tkns = []
+    for sect1 in sect_sents:
+        sent_tkns_sect = []
+        for sent1 in sect1:
+            sent_tkns_sect.append(get_tokens(sent1))
+        tkns.append(sent_tkns_sect)
+
+    sect_sents_tokenized = tkns
+
     # adding section scores
     section_scores = []
     for sect_idx, sect in enumerate(sect_sents):
@@ -56,9 +77,9 @@ def _cal_rg_sect(params):
 
             sect_sum_labels = ext_labels[sect_idx][summ_idx]
             sect_sents_ = sect_sents[sect_idx]
-            sect_tokens = sect_sents_tokenized[sect_idx]
-            # import pdb;pdb.set_trace()
-            rg_avrg = (np.average(sent_sect_scores)+0.01) * ((sum(sect_sum_labels)+1) / (math.sqrt(len(sect_tokens.split())) * len(sect_sents_)))
+            sect_tokens = sum([len(s) for s in sect_sents_tokenized[sect_idx]])
+
+            rg_avrg = (np.average(sent_sect_scores)+0.01) * ((sum(sect_sum_labels)+1) / (math.sqrt(sect_tokens / len(sect_sents_))))
             # import pdb;pdb.set_trace()
             """
             sectScoreV1.parquet: 
@@ -73,7 +94,15 @@ def _cal_rg_sect(params):
     section_scores = np.array(section_scores)
 
     # section_scores / np.moveaxis(section_scores,0, -1).sum(axis=1)[None, :]
-    return (p_id, section_scores)
+    return (p_id, section_scores, sect_sents_tokenized)
+
+def get_tokens(text):
+    doc_nlp = nlp(text)
+    ret = []
+    for tkn in doc_nlp:
+        ret.append(tkn.text)
+    return ret
+
 
 def load_topic_info(se):
     ret = {}
@@ -127,7 +156,8 @@ if __name__ == '__main__':
 
             hf_df['source'].append(topic_info_dict[paper_id]['sections_sents'])
             hf_df['section_headings'].append(topic_info_dict[paper_id]['section_headings'])
-            hf_df['source_tokenized'].append(topic_info_dict[paper_id]['section_text'])
+
+            # hf_df['source_tokenized'].append(0)
             hf_df['summary'].append(paper_ent['summary'])
             hf_df['ext_labels'].append(topic_info_dict[paper_id]['ext_labels'])
             hf_df['topic_info_section'].append(json.dumps(topic_info_dict[paper_id]['topic_info_section']))
@@ -140,25 +170,27 @@ if __name__ == '__main__':
         pool = Pool(16)
 
         section_scores_lst = [0 for _ in range(len(hf_df['paper_id']))]
+        paper_sect_tkns_lst = [0 for _ in range(len(hf_df['paper_id']))]
 
-        mp_instances = [(p_id, src, src_tokenized, summaries, ext_labels) for p_id, src, src_tokenized, summaries, ext_labels in zip(hf_df['paper_id'], hf_df['source'],
-                                                                                                       hf_df['source_tokenized'], hf_df['summary'], hf_df['ext_labels'])]
+        mp_instances = [(p_id, src, summaries, ext_labels) for p_id, src, summaries, ext_labels in zip(hf_df['paper_id'], hf_df['source'], hf_df['summary'], hf_df['ext_labels'])]
         # for m in mp_instances:
         #     if len(m[-1]) > 1:
         #         _cal_rg_sect(m)
-
         paper_ids_indices = hf_df['paper_id'].copy()
 
         for ret in tqdm(pool.imap_unordered(_cal_rg_sect, mp_instances), total=len(mp_instances)):
             p_id = ret[0]
             section_scores = ret[1]
+            src_tokenized = ret[2]
             # if section_scores.shape[1] > 1:
             #     import pdb;pdb.set_trace()
             paper_idx = paper_ids_indices.index(p_id)
             section_scores_lst[paper_idx] = section_scores.tolist()
+            paper_sect_tkns_lst[paper_idx] = src_tokenized
 
         hf_df['section_scores'] = section_scores_lst
-        hf_df.pop('source_tokenized')
+        hf_df['source_tokenized'] = paper_sect_tkns_lst
+        # hf_df.pop('source_tokenized')
 
         print('Writing HF files...')
 
@@ -167,11 +199,6 @@ if __name__ == '__main__':
         except:
             pass
 
-        try:
-            os.makedirs(f'/disk1/sajad/datasets/sci/mup/single_files/{se}')
-        except:
-            pass
-
         import pandas as pd
         df = pd.DataFrame(hf_df)
-        df.to_parquet(f"/disk1/sajad/datasets/sci/mup/hf_format/{se}-sectScoreV1.parquet")
+        df.to_parquet(f"/disk1/sajad/datasets/sci/mup/hf_format/{se}-sectScoreV1-srcTokenized.parquet")

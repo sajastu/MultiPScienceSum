@@ -44,7 +44,7 @@ class GenerationMixin(GenerationMixin):
         sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
                                                   dim=-2).squeeze(-1)
 
-        LIMIT = 3072  # tokens
+        LIMIT = 2048  # tokens
 
         if self.SAMPLING_FROM=='section':
             sample_sect_dist = torch.round(
@@ -134,7 +134,9 @@ class GenerationMixin(GenerationMixin):
             top_sents_ids = torch.argsort(sent_scores, descending=True)
             top_sents_len = torch.zeros_like(sent_len)
 
-            top_sents_len.scatter_(1, top_sents_ids, sent_len)
+            # top_sents_len.scatter_(1, top_sents_ids, sent_len)
+            top_sents_len = torch.index_select(sent_len, 1, top_sents_ids[0])
+
             top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
             top_sents_ids = top_sents_ids[:, :top_sents_included]
 
@@ -170,7 +172,6 @@ class GenerationMixin(GenerationMixin):
     ) -> Dict[str, Any]:
         # 1. get encoder
         encoder = self.get_encoder()
-        # encoder_section = self.get_section_encoder()
         topic_model = self.get_topic_model()
         fusing_function = self.get_topic_fuse()
 
@@ -208,8 +209,8 @@ class GenerationMixin(GenerationMixin):
 
 
         # model_kwargs["topic_model_section_outputs"] = topic_model(model_kwargs['src_bow_section'].squeeze(0), section_pre_encodings.squeeze(0))
-        # gen_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
-        # model_kwargs["encoder_outputs_section"]: ModelOutput = encoder_section(section_pre_encodings, model_kwargs["topic_model_section_outputs"][-1], gen_mask)
+        # gen_mask = torch.BoolTensorTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
+        # model_kwargs["encoder_outputs_section"]: ModelOutput = encoder_section(model_kwargs["selected_sent_embeddings"])
 
         return model_kwargs
 
@@ -245,9 +246,9 @@ class GenerationMixin(GenerationMixin):
         if is_encoder_decoder:
             if encoder_outputs is None:
                 raise ValueError("If `is_encoder_decoder` is True, make sure that `encoder_outputs` is defined.")
-            encoder_outputs["last_hidden_state"] = encoder_outputs.last_hidden_state.index_select(
-                0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device)
-            )
+            # encoder_outputs["last_hidden_state"] = encoder_outputs.last_hidden_state.index_select(
+            #     0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device)
+            # )
             model_kwargs["encoder_outputs"] = encoder_outputs[0].index_select(
                 0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
 

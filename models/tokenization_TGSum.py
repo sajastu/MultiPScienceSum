@@ -6,6 +6,7 @@ from typing import Optional, Union, List, Dict, Any, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from models.model_utilities import greedy_selection
 from transformers import TensorType, LEDTokenizer, is_tf_available, is_torch_available, is_flax_available
 import torch
 
@@ -17,6 +18,11 @@ import transformers
 
 logger = logging.get_logger(__name__)
 transformers.logging.set_verbosity_info()
+import spacy
+from tqdm import tqdm
+import torch
+
+nlp = spacy.load('en_core_sci_lg')
 
 class BatchEncoding(BatchEncoding):
 
@@ -193,8 +199,8 @@ class TGSumTokenizer(LEDTokenizer):
 
     # topic_info = torch.load
     def set_global_idf_and_csv(self):
-        self.idf_info_global = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores/idf_info_global.pt")
-        self.idf_info_section = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores/idf_info_section.pt")
+        self.idf_info_global = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores2/idf_info_global.pt")
+        self.idf_info_section = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores2/idf_info_section.pt")
         self.conc_keywords = pd.read_csv('/home/sajad/packages/summarization/mup/data_processor/heading_keyword.csv')
         self.conc_keywords = self.conc_keywords['conclusion'].dropna().tolist()
 
@@ -391,6 +397,8 @@ class TGSumTokenizer(LEDTokenizer):
         ids: List[int],
         ext_labels=None,
         section_scores=None,
+        # targets=None,
+        # inputs_tokenized=None,
         section_headings=None,
         doc_id=None,
         LAST_SAMPLING_SECTION_NUM=1,
@@ -440,7 +448,7 @@ class TGSumTokenizer(LEDTokenizer):
                             last_n_sects_ids = ids[indices[-LAST_SAMPLING_SECTION_NUM-1]+1:]
                             last_n_ext_labels = ext_labels[-LAST_SAMPLING_SECTION_NUM:]
                             last_n_section_scores = section_scores[-LAST_SAMPLING_SECTION_NUM:]
-
+                            # last_n_sect_sent_token = inputs_tokenized[-LAST_SAMPLING_SECTION_NUM]
                             curr_len = len(last_n_sects_ids)
 
                             # what if curr_len is more than the allowed??
@@ -462,6 +470,7 @@ class TGSumTokenizer(LEDTokenizer):
                                     if sect_idx < (len(indices)-1)-LAST_SAMPLING_SECTION_NUM:
                                         first_ids.append(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
                                         first_ext_labels.append(ext_labels[sect_idx])
+                                        # first_ext_labels.append([greedy_selection(last_n_sect_sent_token, summary.lower(), 30) for summary in targets])
                                         first_section_scores.append(section_scores[sect_idx])
                                         sampled += len(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
                                         sect_idx += 1
@@ -544,8 +553,6 @@ class TGSumTokenizer(LEDTokenizer):
 
                         else:
 
-
-
                             if len(section_headings[0]) > 1:
                                 # if curr_len > preserved_tokens_num
                                 ids = ids[:-num_tokens_to_remove].tolist()
@@ -576,6 +583,14 @@ class TGSumTokenizer(LEDTokenizer):
                                 # while sect_idx < len(sect_indices) - 1:
 
                                 ext_labels = ext_labels[:sections_num]
+                                # inputs_tokenized = inputs_tokenized[:sections_num]
+                                # ext_labels = []
+                                # for sect_ in inputs_tokenized:
+                                #     sum_labels = []
+                                #     for summ in targets:
+                                #         sum_labels.append(greedy_selection(sect_, summ, 30))
+                                #     ext_labels.append(sum_labels)
+
                                 section_scores = section_scores[:sections_num]  # no change to section score
 
                                 # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
@@ -682,6 +697,8 @@ class TGSumTokenizer(LEDTokenizer):
             ids: List[int],
             pair_ids: Optional[List[int]] = None,
             doc_ids=None,
+            # target_summaries=None,
+            # inputs_tokenized=None,
             section_scores=None,
             section_headings=None,
             ext_labels=None,
@@ -712,7 +729,6 @@ class TGSumTokenizer(LEDTokenizer):
             verbose=verbose,
             **kwargs,
         )
-
 
         self.set_global_idf_and_csv()
         pair = bool(pair_ids is not None)
@@ -759,6 +775,8 @@ class TGSumTokenizer(LEDTokenizer):
                 ids,
                 ext_labels,
                 section_scores,
+                # target_summaries,
+                # inputs_tokenized,
                 doc_id=doc_ids,
                 section_headings=section_headings,
                 pair_ids=pair_ids,
@@ -815,8 +833,9 @@ class TGSumTokenizer(LEDTokenizer):
 
         # section len should be eq to number of sents.
 
-        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
+        # if doc_ids=='SP:07f3f45f0396a75d052ee11eabfc0a3fe3ba6579':
         #     import pdb;pdb.set_trace()
+
 
             # print(len(sequence))
         # print('no----')
@@ -913,9 +932,18 @@ class TGSumTokenizer(LEDTokenizer):
         )
         return batch_outputs
 
+    def get_sentence_tokens(self, text):
+        doc_nlp = nlp(text)
+        ret = []
+        for tkn in doc_nlp:
+            ret.append(tkn.text)
+        return ret
+
     def _batch_encode_plus(
         self,
         batch_text_or_text_pairs= None,
+        # inputs_tokenized= None,
+        target_tokenized= None,
         add_special_tokens: bool = True,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
         doc_ids=None,
@@ -937,8 +965,12 @@ class TGSumTokenizer(LEDTokenizer):
         return_offsets_mapping: bool = False,
         return_length: bool = False,
         verbose: bool = True,
+        labeling: str = 'pre-selected',
         **kwargs
     ) -> BatchEncoding:
+
+        # inputs_tokenized = kwargs.pop('inputs_tokenized')
+        targets = target_tokenized
 
         self.BOSECT_ID, self.EOSECT_ID = self.convert_tokens_to_ids(['<sect>', '</sect>'])
 
@@ -970,6 +1002,7 @@ class TGSumTokenizer(LEDTokenizer):
 
         input_ids = []
         ext_labels_set = []
+        str_sents_all = []
         if 'tgt' not in doc_ids[0]:
             for idx, ids_or_pair_ids in enumerate(batch_text_or_text_pairs):
 
@@ -978,26 +1011,41 @@ class TGSumTokenizer(LEDTokenizer):
                 #     pdb.set_trace()
                 sections, pair_ids = ids_or_pair_ids, None
                 first_ids_all = []
+
                 old_ext_label = ext_labels[idx]
                 new_ext_labels = []
                 # sections
+                str_sents_instance = []
+
+                # if doc_ids[idx]=='SP:07f3f45f0396a75d052ee11eabfc0a3fe3ba6579':
+                #     import pdb;pdb.set_trace()
+
                 for sect_idx, sect_sentences in enumerate(sections):
                     # section_heading = section_headings[sect_idx]
                     first_ids = [self.BOSECT_ID, 0]
+                    str_sents_sects = []
                     # sentences
                     # import pdb;
                     # pdb.set_trace()
                     old_ext_label_section = old_ext_label[sect_idx]
                     new_ext_label_section = [[] for _ in range(len(old_ext_label_section))]
                     sect_sentences = [i.strip() for i in sect_sentences.split(' <SENTTT> ')]
-
+                    # if doc_ids[idx] == 'SP:ce7096d31ab0054d5858e54201f8440d3ba18eaf':
+                    #     import pdb;pdb.set_trace()
                     for jsent, sent in enumerate(sect_sentences):
                         if len(sent.strip()) > 0:
                             first_id = get_input_ids(sent)
-                            if len(first_id) > 1:
+                            if len(first_id) > 1 and len(first_id) < 400:
                                 first_ids += first_id + [2, 0]
+                                # try:
+                                    # str_sents_sects.append(self.get_sentence_tokens(sent))
+                                    # str_sents_sects.append(inputs_tokenized[idx][sect_idx][jsent])
+                                # except:
+                                #     import pdb;pdb.set_trace()
                                 for sum_idx in range(len(old_ext_label_section)):
                                     new_ext_label_section[sum_idx].append(old_ext_label_section[sum_idx][jsent])
+
+                    str_sents_instance.append(str_sents_sects)
                     new_ext_labels.append(new_ext_label_section.copy())
                     # if doc_ids[idx] == 'SP:8badc3f75194e9780063af5a2f26448e41e733d4' and sect_idx==9:
                     #     import pdb;
@@ -1005,9 +1053,8 @@ class TGSumTokenizer(LEDTokenizer):
                     first_ids = first_ids[:-1]
                     first_ids = first_ids + [self.EOSECT_ID]
                     first_ids_all.extend(first_ids.copy())
-                # if doc_ids[idx] == 'SP:8badc3f75194e9780063af5a2f26448e41e733d4':
-                #     import pdb;
-                #     pdb.set_trace()
+
+                str_sents_all.append(str_sents_instance)
                 first_ids = first_ids_all
                 second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
                 input_ids.append((first_ids, second_ids))
@@ -1024,8 +1071,12 @@ class TGSumTokenizer(LEDTokenizer):
                 first_ids = get_input_ids(sections)
                 second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
                 input_ids.append((first_ids, second_ids))
+
+
         batch_outputs = self._batch_prepare_for_model(
             input_ids,
+            targets=targets,
+            inputs_tokenized=str_sents_all,
             doc_ids=doc_ids,
             ext_labels=ext_labels_set,
             section_scores=section_scores,
@@ -1100,6 +1151,8 @@ class TGSumTokenizer(LEDTokenizer):
     def _batch_prepare_for_model(
         self,
         batch_ids_pairs: List[Union[PreTokenizedInputPair, Tuple[List[int], None]]],
+        targets = None,
+        inputs_tokenized = None,
         sub_graphs = None,
         doc_ids=None,
         ext_labels=None,
@@ -1135,6 +1188,8 @@ class TGSumTokenizer(LEDTokenizer):
             outputs = self.prepare_for_model(
                 first_ids,
                 second_ids,
+                # target_summaries=targets[idx],
+                # inputs_tokenized=inputs_tokenized[idx],
                 sub_graph=sub_graphs[idx] if sub_graphs is not None else None,
                 doc_ids=doc_ids[idx] if doc_ids is not None else None,
                 section_scores=section_scores[idx] if section_scores is not None else None,
