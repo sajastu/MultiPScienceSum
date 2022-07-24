@@ -12,6 +12,8 @@ export HF_DATASETS_CACHE=/disk0/$USER/.cache/huggingface
 #python -m torch.distributed.launch --nproc_per_node=2 run_summarization.py \
 CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --model_name_or_path $MODEL_NAME \
+    --tokenizer_name $MODEL_NAME \
+    --ext_tokenizer_name roberta-large \
     --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-2048-6144-AllSents-PrepConc-fixed \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \

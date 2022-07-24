@@ -1,4 +1,3 @@
-
 import itertools
 import math
 from typing import Optional, Union, List, Dict, Any, Sequence, Tuple
@@ -24,6 +23,7 @@ import torch
 
 nlp = spacy.load('en_core_sci_lg')
 
+
 class BatchEncoding(BatchEncoding):
 
     def __init__(
@@ -33,7 +33,7 @@ class BatchEncoding(BatchEncoding):
             tensor_type: Union[None, str, TensorType] = None,
             prepend_batch_axis: bool = False,
             n_sequences: Optional[int] = None,
-            is_target = False,
+            is_target=False,
     ):
         self.is_target = is_target
         super(BatchEncoding, self).__init__(
@@ -45,7 +45,7 @@ class BatchEncoding(BatchEncoding):
         )
 
     def convert_to_tensors(
-        self, tensor_type: Optional[Union[str, TensorType]] = None, prepend_batch_axis: bool = False
+            self, tensor_type: Optional[Union[str, TensorType]] = None, prepend_batch_axis: bool = False
     ):
         """
         Convert the inner content to tensors.
@@ -101,7 +101,7 @@ class BatchEncoding(BatchEncoding):
                 self[key] = tensor
                 continue
 
-            elif key=='summ_bow':
+            elif key == 'summ_bow':
                 # test_label = [1,2,3,4,5,6,7,8,9]
                 lbls = []
                 for batch_values in value:
@@ -110,14 +110,15 @@ class BatchEncoding(BatchEncoding):
                         try:
                             batch_labels.append(as_tensor(v))
                         except:
-                            import pdb;pdb.set_trace()
+                            import pdb;
+                            pdb.set_trace()
                     # batch_labels.append(as_tensor(test_label))
                     lbls.append(batch_labels)
 
                 self[key] = lbls
                 continue
 
-            elif key=='ext_labels':
+            elif key == 'ext_labels':
                 # test_label = [1,2,3,4,5,6,7,8,9]
                 lbls = []
                 for batch_values in value:
@@ -126,14 +127,15 @@ class BatchEncoding(BatchEncoding):
                         try:
                             batch_labels.append(as_tensor(v))
                         except:
-                            import pdb;pdb.set_trace()
+                            import pdb;
+                            pdb.set_trace()
                     # batch_labels.append(as_tensor(test_label))
                     lbls.append(batch_labels)
 
                 self[key] = lbls
                 continue
 
-            elif key=='section_scores':
+            elif key == 'section_scores':
                 # test_label = [1,2,3,4,5,6,7,8,9]
                 lbls = []
                 for batch_values in value:
@@ -142,14 +144,15 @@ class BatchEncoding(BatchEncoding):
                         try:
                             batch_labels.append(as_tensor(v))
                         except:
-                            import pdb;pdb.set_trace()
+                            import pdb;
+                            pdb.set_trace()
                     # batch_labels.append(as_tensor(test_label))
                     lbls.append(batch_labels)
 
                 self[key] = lbls
                 continue
 
-            elif key=='labels':
+            elif key == 'labels':
                 lbls = []
                 for batch_values in value:
                     batch_labels = []
@@ -173,7 +176,8 @@ class BatchEncoding(BatchEncoding):
                         try:
                             tensor = as_tensor(value)
                         except:
-                            import pdb;pdb.set_trace()
+                            import pdb;
+                            pdb.set_trace()
                         # Removing this for now in favor of controlling the shape with `prepend_batch_axis`
                         # # at-least2d
                         # if tensor.ndim > 2:
@@ -195,7 +199,8 @@ class BatchEncoding(BatchEncoding):
 
         return self
 
-class TGSumTokenizer(LEDTokenizer):
+
+class TGSumTokenizerExt(LEDTokenizer):
 
     # topic_info = torch.load
     def set_global_idf_and_csv(self):
@@ -262,9 +267,7 @@ class TGSumTokenizer(LEDTokenizer):
             all_bows.append(all_bow)
         return all_bows
 
-
     def truncate_labels(self, encoded_inputs, doc_id):
-
 
         # encoded_input_id = np.array(encoded_inputs['input_ids'])
         # indices = np.where(encoded_input_id == self.EOSECT_ID)
@@ -291,7 +294,6 @@ class TGSumTokenizer(LEDTokenizer):
         #     encoded_inputs['ext_labels'] = encoded_inputs['ext_labels'][:-1] + [last_sect_Labels]
         #     encoded_inputs['input_ids'] = encoded_inputs['input_ids']
 
-
         # normalize post_scores
         sum_sects_scores = [[] for _ in range(len(post_scores[0]))]
         for sect_score in post_scores:
@@ -312,40 +314,42 @@ class TGSumTokenizer(LEDTokenizer):
 
         encoded_inputs['section_scores'] = normalized_sect_scores
 
-
         # input_ids_tmp = encoded_inputs['input_ids']
         # try:
         #     input_ids_tmp.remove(self.BOSECT_ID)
         #     input_ids_tmp.remove(self.EOSECT_ID)
         # except:
         #     import pdb;pdb.set_trace()
-        sent_start_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == 0]
-        sent_end_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == 2]
-        encoded_inputs['sent_len'] = [e-s for e, s in zip(sent_end_idx, sent_start_idx)]
+        sent_start_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == self.BOS]
+        sent_end_idx = [i for i, j in enumerate(encoded_inputs['input_ids']) if j == self.EOS]
+        encoded_inputs['sent_len'] = [e - s for e, s in zip(sent_end_idx, sent_start_idx)]
         # encoded_inputs['input_ids'] = [self.BOSECT_ID] + encoded_inputs['input_ids']
         try:
             sect_lens_from_labels = [len(l[0]) for l in encoded_inputs['ext_labels']]
         except:
-            import pdb;pdb.set_trace()
+            import pdb;
+            pdb.set_trace()
         encoded_inputs['section_len'] = []
         input_ids_np = np.array(encoded_inputs['input_ids'])
-        indices_sect = np.where(input_ids_np==self.BOSECT_ID)
+        indices_sect = np.where(input_ids_np == self.BOSECT_ID)
 
         i = 0
         while i < len(indices_sect[0]):
             try:
-                sect_tokens = encoded_inputs['input_ids'][indices_sect[0][i] : indices_sect[0][i+1]]
+                sect_tokens = encoded_inputs['input_ids'][indices_sect[0][i]: indices_sect[0][i + 1]]
             except:
-                sect_tokens = encoded_inputs['input_ids'][indices_sect[0][i] : ]
+                sect_tokens = encoded_inputs['input_ids'][indices_sect[0][i]:]
 
             if sect_lens_from_labels[i] != sect_tokens.count(0):
                 # print(doc_id)
-                import pdb;pdb.set_trace()
+                import pdb;
+                pdb.set_trace()
 
-            assert sect_lens_from_labels[i] == sect_tokens.count(0), 'Sect len from extractive labels and sect tokens should be equal...'
+            assert sect_lens_from_labels[i] == sect_tokens.count(
+                0), 'Sect len from extractive labels and sect tokens should be equal...'
             encoded_inputs['section_len'].append(sect_tokens.count(0))
 
-            i+=1
+            i += 1
 
         # import pdb;pdb.set_trace()
         # if doc_id=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
@@ -391,22 +395,21 @@ class TGSumTokenizer(LEDTokenizer):
 
             return False
 
-
     def truncate_sequences(
-        self,
-        ids: List[int],
-        ext_labels=None,
-        section_scores=None,
-        # targets=None,
-        # inputs_tokenized=None,
-        section_headings=None,
-        doc_id=None,
-        LAST_SAMPLING_SECTION_NUM=1,
-        pair_ids: Optional[List[int]] = None,
-        num_tokens_to_remove: int = 0,
-        num_tokens_to_preserve: int = 0,
-        truncation_strategy: Union[str, TruncationStrategy] = "longest_first",
-        stride: int = 0,
+            self,
+            ids: List[int],
+            ext_labels=None,
+            section_scores=None,
+            # targets=None,
+            # inputs_tokenized=None,
+            section_headings=None,
+            doc_id=None,
+            LAST_SAMPLING_SECTION_NUM=1,
+            pair_ids: Optional[List[int]] = None,
+            num_tokens_to_remove: int = 0,
+            num_tokens_to_preserve: int = 0,
+            truncation_strategy: Union[str, TruncationStrategy] = "longest_first",
+            stride: int = 0,
     ) -> Tuple[List[int], List[int], List[int], List[List[List[int]]], List[List[float]]]:
 
         if num_tokens_to_remove <= 0:
@@ -417,7 +420,7 @@ class TGSumTokenizer(LEDTokenizer):
 
         overflowing_tokens = []
         if truncation_strategy == TruncationStrategy.ONLY_FIRST or (
-            truncation_strategy == TruncationStrategy.LONGEST_FIRST and pair_ids is None
+                truncation_strategy == TruncationStrategy.LONGEST_FIRST and pair_ids is None
         ):
             if len(ids) > num_tokens_to_remove:
                 window_len = min(len(ids), stride + num_tokens_to_remove)
@@ -445,7 +448,7 @@ class TGSumTokenizer(LEDTokenizer):
                         if len(indices) > LAST_SAMPLING_SECTION_NUM and self.last_sect_in_conc(section_headings[0][-1]):
                             indices = np.concatenate(([-1], indices))
                             # last two sections
-                            last_n_sects_ids = ids[indices[-LAST_SAMPLING_SECTION_NUM-1]+1:]
+                            last_n_sects_ids = ids[indices[-LAST_SAMPLING_SECTION_NUM - 1] + 1:]
                             last_n_ext_labels = ext_labels[-LAST_SAMPLING_SECTION_NUM:]
                             last_n_section_scores = section_scores[-LAST_SAMPLING_SECTION_NUM:]
                             # last_n_sect_sent_token = inputs_tokenized[-LAST_SAMPLING_SECTION_NUM]
@@ -467,12 +470,12 @@ class TGSumTokenizer(LEDTokenizer):
                                 # important note: sampling shouldn't be done from the last two scetions!!
 
                                 while sampled < sampling_rest:
-                                    if sect_idx < (len(indices)-1)-LAST_SAMPLING_SECTION_NUM:
-                                        first_ids.append(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
+                                    if sect_idx < (len(indices) - 1) - LAST_SAMPLING_SECTION_NUM:
+                                        first_ids.append(ids[indices[sect_idx] + 1:indices[sect_idx + 1] + 1])
                                         first_ext_labels.append(ext_labels[sect_idx])
                                         # first_ext_labels.append([greedy_selection(last_n_sect_sent_token, summary.lower(), 30) for summary in targets])
                                         first_section_scores.append(section_scores[sect_idx])
-                                        sampled += len(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
+                                        sampled += len(ids[indices[sect_idx] + 1:indices[sect_idx + 1] + 1])
                                         sect_idx += 1
 
                                 # if doc_id=='SP:8badc3f75194e9780063af5a2f26448e41e733d4':
@@ -489,20 +492,21 @@ class TGSumTokenizer(LEDTokenizer):
 
                                     if len(first_ids[-1]) > 10:
 
-                                        if first_ids[-1][-3] != 2:
+                                        if first_ids[-1][-3] != self.EOS:
 
-                                            if first_ids[-1][-2] != 2:
-                                                first_ids[-1][-2] = 2
+                                            if first_ids[-1][-2] != self.EOS:
+                                                first_ids[-1][-2] = self.EOS
                                             if first_ids[-1][-1] != self.EOSECT_ID:
                                                 first_ids[-1][-1] = self.EOSECT_ID
                                         else:
-                                            sect_sent_pos = np.where(first_ids[-1] == 0)[0]
-                                            first_ids[-1] = np.concatenate((first_ids[-1][:sect_sent_pos[-1]], [self.EOSECT_ID]))
+                                            sect_sent_pos = np.where(first_ids[-1] == self.BOS)[0]
+                                            first_ids[-1] = np.concatenate(
+                                                (first_ids[-1][:sect_sent_pos[-1]], [self.EOSECT_ID]))
                                             # drop the last sentence entirely
 
-
-                                        n_sents_in_last_sect = np.count_nonzero(first_ids[-1] == 0)
-                                        first_ext_labels[-1] = [ex[:n_sents_in_last_sect] for ex in first_ext_labels[-1]]
+                                        n_sents_in_last_sect = np.count_nonzero(first_ids[-1] == self.BOS)
+                                        first_ext_labels[-1] = [ex[:n_sents_in_last_sect] for ex in
+                                                                first_ext_labels[-1]]
 
 
                                     else:
@@ -511,8 +515,8 @@ class TGSumTokenizer(LEDTokenizer):
                                         first_ext_labels = first_ext_labels[:-1]
                                         first_section_scores = first_section_scores[:-1]
 
-
-                                ids = list(itertools.chain.from_iterable([f.tolist() for f in first_ids])) + last_n_sects_ids.tolist()
+                                ids = list(itertools.chain.from_iterable(
+                                    [f.tolist() for f in first_ids])) + last_n_sects_ids.tolist()
                                 # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
                                 #     import pdb;
                                 #     pdb.set_trace()
@@ -523,20 +527,20 @@ class TGSumTokenizer(LEDTokenizer):
                                 # if curr_len > preserved_tokens_num
 
                                 ids = ids[:-num_tokens_to_remove].tolist()
-                                if ids[-3] != 2:
-                                    if ids[-2] != 2:
-                                        ids[-2] = 2
+                                if ids[-3] != self.EOS:
+                                    if ids[-2] != self.EOS:
+                                        ids[-2] = self.EOS
                                     if ids[-1] != self.EOSECT_ID:
                                         ids[-1] = self.EOSECT_ID
                                 else:
                                     # drop the whole last sentence...
                                     ids = np.array(ids)
-                                    sent_pos = np.where(ids == 0)[0]
+                                    sent_pos = np.where(ids == self.BOS)[0]
                                     ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
                                 # we are not sure how many sections are there so process in generic form
                                 sections_num = ids.count(self.BOSECT_ID)
                                 ids = np.array(ids)
-                                sect_indices = np.where(ids==self.EOSECT_ID)[0]
+                                sect_indices = np.where(ids == self.EOSECT_ID)[0]
                                 # sect_idx = 0
                                 # while sect_idx < len(sect_indices) - 1:
 
@@ -544,7 +548,8 @@ class TGSumTokenizer(LEDTokenizer):
                                 section_scores = section_scores[:sections_num]  # no change to section score
 
                                 # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
-                                last_sect_sents_num = np.count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1] == 0)
+                                last_sect_sents_num = np.count_nonzero(
+                                    ids[sect_indices[-2] + 1: sect_indices[-1] + 1] == self.BOS)
                                 # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
                                 #     import pdb;
                                 #     pdb.set_trace()
@@ -556,7 +561,7 @@ class TGSumTokenizer(LEDTokenizer):
                             if len(section_headings[0]) > 1:
                                 # if curr_len > preserved_tokens_num
                                 ids = ids[:-num_tokens_to_remove].tolist()
-                                if ids[-3] != 2:
+                                if ids[-3] != self.EOS:
                                     if ids[-3] == self.EOSECT_ID:
                                         ids = ids[:-2]
 
@@ -564,8 +569,8 @@ class TGSumTokenizer(LEDTokenizer):
                                         ids = ids[:-3]
 
                                     else:
-                                        if ids[-2] != 2:
-                                            ids[-2] = 2
+                                        if ids[-2] != self.EOS:
+                                            ids[-2] = self.EOS
                                         if ids[-1] != self.EOSECT_ID:
                                             ids[-1] = self.EOSECT_ID
 
@@ -573,7 +578,7 @@ class TGSumTokenizer(LEDTokenizer):
                                 else:
                                     # drop the whole last sentence...
                                     ids = np.array(ids)
-                                    sent_pos = np.where(ids == 0)[0]
+                                    sent_pos = np.where(ids == self.BOS)[0]
                                     ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
                                 # we are not sure how many sections are there so process in generic form
                                 sections_num = ids.count(self.BOSECT_ID)
@@ -595,9 +600,10 @@ class TGSumTokenizer(LEDTokenizer):
 
                                 # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
                                 try:
-                                    last_sect_sents_num = np.count_nonzero(ids[sect_indices[-2] + 1: sect_indices[-1] + 1] == 0)
+                                    last_sect_sents_num = np.count_nonzero(
+                                        ids[sect_indices[-2] + 1: sect_indices[-1] + 1] == self.BOS)
                                 except:
-                                    last_sect_sents_num = np.count_nonzero(ids[0: sect_indices[-1] + 1] == 0)
+                                    last_sect_sents_num = np.count_nonzero(ids[0: sect_indices[-1] + 1] == self.BOS)
 
                                 # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
                                 #     import pdb;
@@ -611,28 +617,27 @@ class TGSumTokenizer(LEDTokenizer):
 
                             else:
 
-
                                 # we got only one section...!!!
                                 # normal truncation
                                 # if doc_id=='SP:9326f169cc5e8d2f4268dcf39af31590ee004d98':
                                 #     import pdb;pdb.set_trace()
                                 ids = ids[:-num_tokens_to_remove].tolist()
-                                if ids[-3] != 2:
-                                    if ids[-2] != 2:
-                                        ids[-2] = 2
+                                if ids[-3] != self.EOS:
+                                    if ids[-2] != self.EOS:
+                                        ids[-2] = self.EOS
                                     if ids[-1] != self.EOSECT_ID:
                                         ids[-1] = self.EOSECT_ID
                                 else:
                                     # drop the whole last sentence...
                                     ids = np.array(ids)
-                                    sent_pos = np.where(ids==0)[0]
+                                    sent_pos = np.where(ids == self.BOS)[0]
                                     ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
 
                                 # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
                                 #     import pdb;
                                 #     pdb.set_trace()
                                 ext_labels[0] = [ex[:ids.count(0)] for ex in ext_labels[0]]
-                                section_scores = section_scores # no change to section score
+                                section_scores = section_scores  # no change to section score
 
                 else:
                     raise ValueError(f"invalid truncation strategy: {self.truncation_side}, use 'left' or 'right'.")
@@ -644,9 +649,9 @@ class TGSumTokenizer(LEDTokenizer):
                 )
                 if truncation_strategy == TruncationStrategy.ONLY_FIRST:
                     error_msg = (
-                        error_msg
-                        + "Please select another truncation strategy than "
-                        f"{truncation_strategy}, for instance 'longest_first' or 'only_second'."
+                            error_msg
+                            + "Please select another truncation strategy than "
+                              f"{truncation_strategy}, for instance 'longest_first' or 'only_second'."
                     )
                 logger.error(error_msg)
         elif truncation_strategy == TruncationStrategy.LONGEST_FIRST:
@@ -786,7 +791,6 @@ class TGSumTokenizer(LEDTokenizer):
                 stride=stride,
             )
 
-
         # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
 
         if return_overflowing_tokens:
@@ -803,41 +807,29 @@ class TGSumTokenizer(LEDTokenizer):
 
         # Build output dictionary
         encoded_inputs["input_ids"] = sequence
-        # encoded_inputs["ext_labels"] = ext_labels
-        # encoded_inputs["section_scores"] = section_scores
-        # print(len(sequence))
-        # import pdb;pdb.set_trace()
-        # if doc_ids == 'SP:f76f1289d7b47dd1bd381108f5b86a410613af9e':
-        #     import pdb;
-        #     pdb.set_trace()
-
-        # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':
-        #     import pdb;pdb.set_trace()
 
         if encoded_inputs['input_ids'][-3] == self.EOSECT_ID:
             encoded_inputs['input_ids'] = encoded_inputs['input_ids'][:-3] + [self.EOSECT_ID]
 
-        if encoded_inputs['input_ids'][-3] == 2:
+        if encoded_inputs['input_ids'][-3] == self.EOS:
             encoded_inputs['input_ids'] = encoded_inputs['input_ids'][:-2] + [self.EOSECT_ID]
 
-        if encoded_inputs['input_ids'][-3] == self.BOSECT_ID and encoded_inputs['input_ids'][-2] == 2 and  encoded_inputs['input_ids'][-1] == self.EOSECT_ID:
+        if encoded_inputs['input_ids'][-3] == self.BOSECT_ID and encoded_inputs['input_ids'][-2] == self.EOS and \
+                encoded_inputs['input_ids'][-1] == self.EOSECT_ID:
             encoded_inputs['input_ids'] = encoded_inputs['input_ids'][:-3]
             # encoded_inputs['input_ids'][-4] = self.EOSECT_ID
             # encoded_inputs['input_ids'][-5] = 2
 
-        if encoded_inputs['input_ids'][-1] != self.EOSECT_ID and encoded_inputs['input_ids'][-2] != 2:
+        if encoded_inputs['input_ids'][-1] != self.EOSECT_ID and encoded_inputs['input_ids'][-2] != self.EOS:
             encoded_inputs['input_ids'][-1] = self.EOSECT_ID
-            encoded_inputs['input_ids'][-2] = 2
-
-
+            encoded_inputs['input_ids'][-2] = self.EOS
 
         # section len should be eq to number of sents.
 
         # if doc_ids=='SP:07f3f45f0396a75d052ee11eabfc0a3fe3ba6579':
         #     import pdb;pdb.set_trace()
 
-
-            # print(len(sequence))
+        # print(len(sequence))
         # print('no----')
         if ext_labels is not None:
             encoded_inputs['ext_labels'] = ext_labels
@@ -846,9 +838,6 @@ class TGSumTokenizer(LEDTokenizer):
         if ext_labels is not None and section_scores is not None:
             encoded_inputs = self.truncate_labels(encoded_inputs, doc_ids)
 
-
-
-        # print(len(encoded_inputs['input_ids']))
         if return_token_type_ids:
             encoded_inputs["token_type_ids"] = token_type_ids
         if return_special_tokens_mask:
@@ -857,23 +846,9 @@ class TGSumTokenizer(LEDTokenizer):
             else:
                 encoded_inputs["special_tokens_mask"] = [0] * len(sequence)
 
-
-        # if sub_graph is not None:
-            # encoded_inputs["subgraphs"] = self._prepare_subgraph(sub_graph)
-
         encoded_inputs["doc_ids"] = doc_ids
         # assert special tokens...
-
         # now truncate section scores and ext_labels based on truncated input_ids
-
-
-        if topic_info_tuple is not None:
-            # encoded_inputs["src_bow_section"], encoded_inputs['src_bow_global'] = \
-            encoded_inputs['src_bow_global'] = \
-                self.generate_src_bow(topic_info_tuple, encoded_inputs["input_ids"], doc_ids, ids)
-
-
-
         # Check lengths
         self._eventual_warn_about_too_long_sequence(encoded_inputs["input_ids"], max_length, verbose)
         # Padding
@@ -897,10 +872,11 @@ class TGSumTokenizer(LEDTokenizer):
                     if id == self.BOSECT_ID:
                         # if encoded_inputs['input_ids'][idx + 1] != 0:
                         #     import pdb;pdb.set_trace()
-                        assert encoded_inputs['input_ids'][idx + 1] == 0, f"after {self.BOSECT_ID} should be 0, but found {encoded_inputs['input_ids'][idx + 1]}"
-                    if id == 2:
+                        assert encoded_inputs['input_ids'][
+                                   idx + 1] == self.BOS, f"after {self.BOSECT_ID} should be 0, but found {encoded_inputs['input_ids'][idx + 1]}"
+                    if id == self.EOS:
                         assert ((encoded_inputs['input_ids'][idx + 1] == self.EOSECT_ID) or (
-                                encoded_inputs['input_ids'][idx + 1] == 0)), f"after 2 should be {self.EOSECT_ID} or 0"
+                                encoded_inputs['input_ids'][idx + 1] == self.BOS)), f"after 2 should be {self.EOSECT_ID} or 0"
                     if id == self.EOSECT_ID:
                         if encoded_inputs['input_ids'][idx + 1] != self.BOSECT_ID:
                             import pdb;
@@ -909,19 +885,22 @@ class TGSumTokenizer(LEDTokenizer):
                                    idx + 1] == self.BOSECT_ID, f'after {self.EOSECT_ID} should be {self.BOSECT_ID}, not {encoded_inputs["input_ids"][idx + 1]}'
                 idx += 1
 
-            if 'section_len' in encoded_inputs.keys() and sum(encoded_inputs['section_len']) != encoded_inputs['input_ids'].count(0):
-                import pdb;pdb.set_trace()
+            if 'section_len' in encoded_inputs.keys() and sum(encoded_inputs['section_len']) != encoded_inputs[
+                'input_ids'].count(0):
+                import pdb;
+                pdb.set_trace()
 
             # if 'section_len' not in encoded_inputs.keys():
             # import pdb;
             # pdb.set_trace()
 
             if encoded_inputs['input_ids'].count(self.EOSECT_ID) != len(encoded_inputs['section_scores']):
-                import pdb;pdb.set_trace()
-            assert encoded_inputs['input_ids'].count(self.EOSECT_ID) == len(encoded_inputs['section_scores']), 'Decrep in section...'
+                import pdb;
+                pdb.set_trace()
+            assert encoded_inputs['input_ids'].count(self.EOSECT_ID) == len(
+                encoded_inputs['section_scores']), 'Decrep in section...'
 
             assert sum(encoded_inputs['section_len']) == encoded_inputs['input_ids'].count(0), 'Discrep in sentence len'
-
 
         # print(len(encoded_inputs['input_ids']))
 
@@ -940,39 +919,40 @@ class TGSumTokenizer(LEDTokenizer):
         return ret
 
     def _batch_encode_plus(
-        self,
-        batch_text_or_text_pairs= None,
-        # inputs_tokenized= None,
-        target_tokenized= None,
-        add_special_tokens: bool = True,
-        padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
-        doc_ids=None,
-        is_target=False,
-        topic_info_tuple=None,
-        section_headings=None,
-        ext_labels=None,
-        section_scores=None,
-        truncation_strategy: TruncationStrategy = TruncationStrategy.DO_NOT_TRUNCATE,
-        max_length: Optional[int] = None,
-        stride: int = 0,
-        is_split_into_words: bool = False,
-        pad_to_multiple_of: Optional[int] = None,
-        return_tensors: Optional[Union[str, TensorType]] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
-        return_overflowing_tokens: bool = False,
-        return_special_tokens_mask: bool = False,
-        return_offsets_mapping: bool = False,
-        return_length: bool = False,
-        verbose: bool = True,
-        labeling: str = 'pre-selected',
-        **kwargs
+            self,
+            batch_text_or_text_pairs=None,
+            # inputs_tokenized= None,
+            target_tokenized=None,
+            add_special_tokens: bool = True,
+            padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
+            doc_ids=None,
+            is_target=False,
+            topic_info_tuple=None,
+            section_headings=None,
+            ext_labels=None,
+            section_scores=None,
+            truncation_strategy: TruncationStrategy = TruncationStrategy.DO_NOT_TRUNCATE,
+            max_length: Optional[int] = None,
+            stride: int = 0,
+            is_split_into_words: bool = False,
+            pad_to_multiple_of: Optional[int] = None,
+            return_tensors: Optional[Union[str, TensorType]] = None,
+            return_token_type_ids: Optional[bool] = None,
+            return_attention_mask: Optional[bool] = None,
+            return_overflowing_tokens: bool = False,
+            return_special_tokens_mask: bool = False,
+            return_offsets_mapping: bool = False,
+            return_length: bool = False,
+            verbose: bool = True,
+            labeling: str = 'pre-selected',
+            **kwargs
     ) -> BatchEncoding:
 
         # inputs_tokenized = kwargs.pop('inputs_tokenized')
         targets = target_tokenized
 
-        self.BOSECT_ID, self.EOSECT_ID = self.convert_tokens_to_ids(['<sect>', '</sect>'])
+        self.BOS, self.EOS = self.convert_tokens_to_ids(['<s>', '</s>'])
+        self.BOSECT_ID, self.EOSECT_ID = -1000000, -1000001
 
         def get_input_ids(text):
             if isinstance(text, str):
@@ -1022,7 +1002,7 @@ class TGSumTokenizer(LEDTokenizer):
 
                 for sect_idx, sect_sentences in enumerate(sections):
                     # section_heading = section_headings[sect_idx]
-                    first_ids = [self.BOSECT_ID, 0]
+                    first_ids = [self.BOSECT_ID, self.BOS]
                     str_sents_sects = []
                     # sentences
                     # import pdb;
@@ -1036,10 +1016,10 @@ class TGSumTokenizer(LEDTokenizer):
                         if len(sent.strip()) > 0:
                             first_id = get_input_ids(sent)
                             if len(first_id) > 1 and len(first_id) < 400:
-                                first_ids += first_id + [2, 0]
+                                first_ids += first_id + [self.EOS, self.BOS]
                                 # try:
-                                    # str_sents_sects.append(self.get_sentence_tokens(sent))
-                                    # str_sents_sects.append(inputs_tokenized[idx][sect_idx][jsent])
+                                # str_sents_sects.append(self.get_sentence_tokens(sent))
+                                # str_sents_sects.append(inputs_tokenized[idx][sect_idx][jsent])
                                 # except:
                                 #     import pdb;pdb.set_trace()
                                 for sum_idx in range(len(old_ext_label_section)):
@@ -1072,7 +1052,6 @@ class TGSumTokenizer(LEDTokenizer):
                 second_ids = get_input_ids(pair_ids) if pair_ids is not None else None
                 input_ids.append((first_ids, second_ids))
 
-
         batch_outputs = self._batch_prepare_for_model(
             input_ids,
             targets=targets,
@@ -1099,79 +1078,77 @@ class TGSumTokenizer(LEDTokenizer):
 
         return BatchEncoding(batch_outputs, is_target=is_target)
 
-
     def prepare_seq2seq_batch(
-                self,
-                src_texts: List[str],
-                tgt_texts: Optional[List[str]] = None,
-                max_length: Optional[int] = None,
-                max_target_length: Optional[int] = None,
-                padding: str = "longest",
-                return_tensors: str = None,
-                truncation: bool = True,
-                **kwargs,
-        ) -> BatchEncoding:
+            self,
+            src_texts: List[str],
+            tgt_texts: Optional[List[str]] = None,
+            max_length: Optional[int] = None,
+            max_target_length: Optional[int] = None,
+            padding: str = "longest",
+            return_tensors: str = None,
+            truncation: bool = True,
+            **kwargs,
+    ) -> BatchEncoding:
 
-            # warnings.warn(formatted_warning, FutureWarning)
-            # mBART-specific kwargs that should be ignored by other models.
-            kwargs.pop("src_lang", None)
-            kwargs.pop("tgt_lang", None)
-            if max_length is None:
-                max_length = self.model_max_length
+        # warnings.warn(formatted_warning, FutureWarning)
+        # mBART-specific kwargs that should be ignored by other models.
+        kwargs.pop("src_lang", None)
+        kwargs.pop("tgt_lang", None)
+        if max_length is None:
+            max_length = self.model_max_length
 
-            # import pdb;pdb.set_trace()
-            model_inputs = self(
-                src_texts,
+        # import pdb;pdb.set_trace()
+        model_inputs = self(
+            src_texts,
+            add_special_tokens=True,
+            return_tensors=return_tensors,
+            max_length=max_length,
+            padding=padding,
+            truncation=truncation,
+            **kwargs,
+        )
+        if tgt_texts is None:
+            return model_inputs
+        # Process tgt_texts
+        if max_target_length is None:
+            max_target_length = max_length
+        with self.as_target_tokenizer():
+            labels = self(
+                tgt_texts,
                 add_special_tokens=True,
                 return_tensors=return_tensors,
-                max_length=max_length,
                 padding=padding,
+                max_length=max_target_length,
                 truncation=truncation,
                 **kwargs,
             )
-            if tgt_texts is None:
-                return model_inputs
-            # Process tgt_texts
-            if max_target_length is None:
-                max_target_length = max_length
-            with self.as_target_tokenizer():
-                labels = self(
-                    tgt_texts,
-                    add_special_tokens=True,
-                    return_tensors=return_tensors,
-                    padding=padding,
-                    max_length=max_target_length,
-                    truncation=truncation,
-                    **kwargs,
-                )
-            model_inputs["labels"] = labels["input_ids"]
-            return model_inputs
-
+        model_inputs["labels"] = labels["input_ids"]
+        return model_inputs
 
     def _batch_prepare_for_model(
-        self,
-        batch_ids_pairs: List[Union[PreTokenizedInputPair, Tuple[List[int], None]]],
-        targets = None,
-        inputs_tokenized = None,
-        sub_graphs = None,
-        doc_ids=None,
-        ext_labels=None,
-        section_scores=None,
-        section_headings=None,
-        topic_info_tuple=None,
-        add_special_tokens: bool = True,
-        padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
-        truncation_strategy: TruncationStrategy = TruncationStrategy.DO_NOT_TRUNCATE,
-        max_length: Optional[int] = None,
-        stride: int = 0,
-        pad_to_multiple_of: Optional[int] = None,
-        return_tensors: Optional[str] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
-        return_overflowing_tokens: bool = False,
-        return_special_tokens_mask: bool = False,
-        return_length: bool = False,
-        verbose: bool = True,
+            self,
+            batch_ids_pairs: List[Union[PreTokenizedInputPair, Tuple[List[int], None]]],
+            targets=None,
+            inputs_tokenized=None,
+            sub_graphs=None,
+            doc_ids=None,
+            ext_labels=None,
+            section_scores=None,
+            section_headings=None,
+            topic_info_tuple=None,
+            add_special_tokens: bool = True,
+            padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
+            truncation_strategy: TruncationStrategy = TruncationStrategy.DO_NOT_TRUNCATE,
+            max_length: Optional[int] = None,
+            stride: int = 0,
+            pad_to_multiple_of: Optional[int] = None,
+            return_tensors: Optional[str] = None,
+            return_token_type_ids: Optional[bool] = None,
+            return_attention_mask: Optional[bool] = None,
+            return_overflowing_tokens: bool = False,
+            return_special_tokens_mask: bool = False,
+            return_length: bool = False,
+            verbose: bool = True,
     ) -> BatchEncoding:
         """
         Prepares a sequence of input id, or a pair of sequences of inputs ids so that it can be used by the model. It
@@ -1231,20 +1208,20 @@ class TGSumTokenizer(LEDTokenizer):
         return batch_outputs
 
     def pad(
-        self,
-        encoded_inputs: Union[
-            BatchEncoding,
-            List[BatchEncoding],
-            Dict[str, EncodedInput],
-            Dict[str, List[EncodedInput]],
-            List[Dict[str, EncodedInput]],
-        ],
-        padding: Union[bool, str, PaddingStrategy] = True,
-        max_length: Optional[int] = None,
-        pad_to_multiple_of: Optional[int] = None,
-        return_attention_mask: Optional[bool] = None,
-        return_tensors: Optional[Union[str, TensorType]] = None,
-        verbose: bool = True,
+            self,
+            encoded_inputs: Union[
+                BatchEncoding,
+                List[BatchEncoding],
+                Dict[str, EncodedInput],
+                Dict[str, List[EncodedInput]],
+                List[Dict[str, EncodedInput]],
+            ],
+            padding: Union[bool, str, PaddingStrategy] = True,
+            max_length: Optional[int] = None,
+            pad_to_multiple_of: Optional[int] = None,
+            return_attention_mask: Optional[bool] = None,
+            return_tensors: Optional[Union[str, TensorType]] = None,
+            verbose: bool = True,
     ) -> BatchEncoding:
         # If we have a list of dicts, let's convert it in a dict of lists
         # We do this to allow using this method as a collate_fn function in PyTorch Dataloader
@@ -1338,12 +1315,12 @@ class TGSumTokenizer(LEDTokenizer):
         return BatchEncoding(batch_outputs, tensor_type=return_tensors)
 
     def _pad(
-        self,
-        encoded_inputs: Union[Dict[str, EncodedInput], BatchEncoding],
-        max_length: Optional[int] = None,
-        padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
-        pad_to_multiple_of: Optional[int] = None,
-        return_attention_mask: Optional[bool] = None,
+            self,
+            encoded_inputs: Union[Dict[str, EncodedInput], BatchEncoding],
+            max_length: Optional[int] = None,
+            padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
+            pad_to_multiple_of: Optional[int] = None,
+            return_attention_mask: Optional[bool] = None,
     ) -> dict:
         """
         Pad encoded inputs (on left/right and up to predefined length or max length in the batch)
@@ -1391,11 +1368,10 @@ class TGSumTokenizer(LEDTokenizer):
 
             if self.padding_side == "right":
                 if return_attention_mask:
-
                     encoded_inputs["attention_mask"] = encoded_inputs["attention_mask"] + [0] * difference
                 if "token_type_ids" in encoded_inputs:
                     encoded_inputs["token_type_ids"] = (
-                        encoded_inputs["token_type_ids"] + [self.pad_token_type_id] * difference
+                            encoded_inputs["token_type_ids"] + [self.pad_token_type_id] * difference
                     )
                 if "special_tokens_mask" in encoded_inputs:
                     encoded_inputs["special_tokens_mask"] = encoded_inputs["special_tokens_mask"] + [1] * difference
@@ -1424,7 +1400,7 @@ class TGSumTokenizer(LEDTokenizer):
                 if self.padding_side == "right":
                     # Use `-1` since `0` in `global_attention_mask` means `local attention` instead of `not to attend`
                     encoded_inputs["global_attention_mask"] = (
-                        encoded_inputs["global_attention_mask"] + [-1] * difference
+                            encoded_inputs["global_attention_mask"] + [-1] * difference
                     )
                 elif self.padding_side == "left":
                     encoded_inputs["global_attention_mask"] = [-1] * difference + encoded_inputs[

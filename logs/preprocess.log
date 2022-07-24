@@ -1,0 +1,769 @@
+[2022-06-27 12:15:47,345 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-27 12:15:47,362 INFO] setting ignored attribute vectors_norm to None
+[2022-06-27 12:15:47,362 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-27 12:15:47,362 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-06-27 12:21:53,826 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-27 12:21:53,843 INFO] setting ignored attribute vectors_norm to None
+[2022-06-27 12:21:53,844 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-27 12:21:53,844 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-27 12:22:51,720 INFO] Processed instances 1000
+[2022-06-27 12:22:51,720 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-06-27 12:22:53,385 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-06-27 12:23:52,743 INFO] Processed instances 1000
+[2022-06-27 12:23:52,743 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-06-27 12:23:54,475 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-06-27 12:24:53,126 INFO] Processed instances 1000
+[2022-06-27 12:24:53,127 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-06-27 12:24:54,852 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-06-27 12:25:53,371 INFO] Processed instances 1000
+[2022-06-27 12:25:53,371 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-06-27 12:25:55,083 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-06-27 12:26:52,963 INFO] Processed instances 1000
+[2022-06-27 12:26:52,964 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-06-27 12:26:54,731 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-06-27 12:27:53,853 INFO] Processed instances 1000
+[2022-06-27 12:27:53,853 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-06-27 12:27:55,615 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-06-27 12:28:54,228 INFO] Processed instances 1000
+[2022-06-27 12:28:54,228 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-06-27 12:28:55,950 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.0.json
+[2022-06-27 12:29:56,363 INFO] Processed instances 1000
+[2022-06-27 12:29:56,363 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.0.bert.pt
+[2022-06-27 12:29:58,147 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-06-27 12:30:21,049 INFO] Processed instances 379
+[2022-06-27 12:30:21,049 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-06-27 12:30:21,875 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-06-27 12:31:19,792 INFO] Processed instances 1000
+[2022-06-27 12:31:19,792 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-06-27 12:31:21,492 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.1.json
+[2022-06-27 12:31:26,090 INFO] Processed instances 60
+[2022-06-27 12:31:26,090 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.1.bert.pt
+[2022-06-27 12:31:26,418 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-06-27 12:31:26,423 INFO] Total examples: 9439
+[2022-06-27 12:31:26,424 INFO] Exceed length sentences number: 0
+[2022-06-27 12:31:26,424 INFO] Average src token length: 0.000000
+[2022-06-27 12:31:26,424 INFO] token num 0 ~ 300: 9439, 1.00%
+[2022-06-27 12:31:26,424 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-06-27 12:31:26,424 INFO] Average tgt length: 0.000000
+[2022-06-29 13:59:18,792 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-29 13:59:18,803 INFO] setting ignored attribute vectors_norm to None
+[2022-06-29 13:59:18,803 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-29 13:59:18,803 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-29 14:00:11,261 INFO] Processed instances 1000
+[2022-06-29 14:00:11,261 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-06-29 14:00:12,886 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-06-29 14:01:06,538 INFO] Processed instances 1000
+[2022-06-29 14:01:06,538 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-06-29 14:01:08,191 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-06-29 14:02:01,544 INFO] Processed instances 1000
+[2022-06-29 14:02:01,545 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-06-29 14:02:03,211 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-06-29 14:02:55,035 INFO] Processed instances 1000
+[2022-06-29 14:02:55,035 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-06-29 14:02:56,699 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-06-29 14:03:49,340 INFO] Processed instances 1000
+[2022-06-29 14:03:49,340 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-06-29 14:03:51,016 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-06-29 14:04:44,237 INFO] Processed instances 1000
+[2022-06-29 14:04:44,238 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-06-29 14:04:45,921 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-06-29 14:05:38,896 INFO] Processed instances 1000
+[2022-06-29 14:05:38,896 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-06-29 14:05:40,609 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.0.json
+[2022-06-29 14:06:34,525 INFO] Processed instances 1000
+[2022-06-29 14:06:34,525 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.0.bert.pt
+[2022-06-29 14:06:36,258 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-06-29 14:06:56,772 INFO] Processed instances 379
+[2022-06-29 14:06:56,772 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-06-29 14:06:57,567 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-06-29 14:07:50,270 INFO] Processed instances 1000
+[2022-06-29 14:07:50,270 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-06-29 14:07:51,946 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.1.json
+[2022-06-29 14:07:56,322 INFO] Processed instances 60
+[2022-06-29 14:07:56,322 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.1.bert.pt
+[2022-06-29 14:07:56,619 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-06-29 14:07:56,622 INFO] Total examples: 9439
+[2022-06-29 14:07:56,622 INFO] Exceed length sentences number: 0
+[2022-06-29 14:07:56,623 INFO] Average src token length: 0.000000
+[2022-06-29 14:07:56,623 INFO] token num 0 ~ 300: 9439, 1.00%
+[2022-06-29 14:07:56,623 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-06-29 14:07:56,623 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-06-29 14:07:56,623 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-06-29 14:07:56,623 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-06-29 14:07:56,623 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-06-29 14:07:56,623 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-06-29 14:07:56,624 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-06-29 14:07:56,624 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-06-29 14:07:56,624 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-06-29 14:07:56,624 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-06-29 14:07:56,624 INFO] Average tgt length: 0.000000
+[2022-06-30 16:24:40,292 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:24:40,304 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 16:24:40,304 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:24:40,304 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 16:26:24,391 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:26:24,403 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 16:26:24,404 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:26:24,404 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 16:28:08,812 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:28:08,824 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 16:28:08,825 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:28:08,825 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 16:30:44,219 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:30:44,231 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 16:30:44,232 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 16:30:44,232 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:27:30,244 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:27:30,257 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:27:30,257 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:27:30,257 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:34:34,700 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:34:34,711 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:34:34,712 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:34:34,712 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:35:17,979 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:35:17,990 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:35:17,990 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:35:17,990 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:36:03,350 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:36:03,361 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:36:03,361 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:36:03,361 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:37:02,742 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:37:02,754 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:37:02,754 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:37:02,754 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:38:55,917 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:38:55,928 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:38:55,928 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:38:55,928 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:39:28,925 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:39:28,937 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:39:28,937 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:39:28,937 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:39:59,783 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:39:59,794 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:39:59,795 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:39:59,795 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 21:40:58,340 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:40:58,351 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 21:40:58,351 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 21:40:58,351 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:54:26,923 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:54:26,934 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:54:26,934 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:54:26,934 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:55:58,558 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:55:58,569 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:55:58,570 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:55:58,570 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:57:11,721 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:57:11,733 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:57:11,733 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:57:11,733 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:57:43,238 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:57:43,250 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:57:43,250 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:57:43,250 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:58:30,924 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:58:30,936 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:58:30,936 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:58:30,936 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:59:15,256 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:59:15,267 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:59:15,268 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:59:15,268 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 22:59:54,470 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:59:54,481 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 22:59:54,481 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 22:59:54,481 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:01:45,425 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:01:45,436 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 23:01:45,437 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:01:45,437 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:02:10,647 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:02:10,658 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 23:02:10,658 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:02:10,658 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:03:15,205 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:03:15,216 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 23:03:15,217 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:03:15,217 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:05:46,901 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:05:46,913 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 23:05:46,914 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:05:46,914 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:07:27,726 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:07:27,737 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 23:07:27,738 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:07:27,738 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:08:36,160 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:08:36,172 INFO] setting ignored attribute vectors_norm to None
+[2022-06-30 23:08:36,172 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-06-30 23:08:36,172 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-06-30 23:09:18,202 INFO] Processed instances 1000
+[2022-06-30 23:09:18,202 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-06-30 23:09:19,720 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-06-30 23:10:02,254 INFO] Processed instances 1000
+[2022-06-30 23:10:02,254 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-06-30 23:10:03,821 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-06-30 23:10:45,944 INFO] Processed instances 1000
+[2022-06-30 23:10:45,945 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-06-30 23:10:47,484 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-06-30 23:11:30,028 INFO] Processed instances 1000
+[2022-06-30 23:11:30,029 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-06-30 23:11:31,523 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-06-30 23:12:12,983 INFO] Processed instances 1000
+[2022-06-30 23:12:12,984 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-06-30 23:12:14,531 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-06-30 23:12:56,515 INFO] Processed instances 1000
+[2022-06-30 23:12:56,515 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-06-30 23:12:58,062 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-06-30 23:13:39,267 INFO] Processed instances 1000
+[2022-06-30 23:13:39,268 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-06-30 23:13:40,861 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.0.json
+[2022-07-01 00:55:37,731 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-01 00:55:37,742 INFO] setting ignored attribute vectors_norm to None
+[2022-07-01 00:55:37,743 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-01 00:55:37,743 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-01 00:56:18,507 INFO] Processed instances 1000
+[2022-07-01 00:56:18,507 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-01 00:56:23,048 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-01 00:57:05,503 INFO] Processed instances 1000
+[2022-07-01 00:57:05,504 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-01 00:57:10,104 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-01 00:57:52,129 INFO] Processed instances 1000
+[2022-07-01 00:57:52,130 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-01 00:57:56,756 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-01 00:58:39,066 INFO] Processed instances 1000
+[2022-07-01 00:58:39,066 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-01 00:58:43,551 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-01 00:59:24,780 INFO] Processed instances 1000
+[2022-07-01 00:59:24,780 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-01 00:59:29,366 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-01 01:00:11,173 INFO] Processed instances 1000
+[2022-07-01 01:00:11,173 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-01 01:00:15,692 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-01 01:00:57,741 INFO] Processed instances 1000
+[2022-07-01 01:00:57,741 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-01 01:01:02,372 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-01 01:01:18,987 INFO] Processed instances 379
+[2022-07-01 01:01:18,987 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-01 01:01:22,771 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-01 01:02:04,484 INFO] Processed instances 1000
+[2022-07-01 01:02:04,485 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-01 01:02:09,133 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-07-01 01:02:09,154 INFO] Total examples: 8379
+[2022-07-01 01:02:09,154 INFO] Exceed length sentences number: 0
+[2022-07-01 01:02:09,154 INFO] Average src token length: 0.000000
+[2022-07-01 01:02:09,154 INFO] token num 0 ~ 300: 8379, 1.00%
+[2022-07-01 01:02:09,154 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-07-01 01:02:09,154 INFO] Average tgt length: 0.000000
+[2022-07-02 00:42:25,059 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:42:25,071 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:42:25,071 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:42:25,071 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 00:45:09,781 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:45:09,793 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:45:09,793 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:45:09,793 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 00:46:37,294 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:46:37,306 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:46:37,306 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:46:37,306 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 00:51:07,115 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:51:07,126 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:51:07,126 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:51:07,126 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 00:52:17,472 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:52:17,492 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:52:17,492 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:52:17,493 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 00:53:11,202 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:53:11,213 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:53:11,213 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:53:11,213 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 00:59:14,930 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:59:14,941 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 00:59:14,942 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 00:59:14,942 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:00:06,708 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:00:06,719 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:00:06,719 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:00:06,719 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:00:46,292 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:00:46,304 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:00:46,304 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:00:46,304 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:03:34,575 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:03:34,586 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:03:34,586 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:03:34,586 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:04:31,627 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:04:31,638 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:04:31,639 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:04:31,639 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:10:44,240 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:10:44,251 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:10:44,251 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:10:44,251 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:15:46,963 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:15:46,974 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:15:46,974 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:15:46,974 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:20:54,407 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:20:54,418 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:20:54,419 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:20:54,419 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:22:29,236 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:22:29,248 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:22:29,248 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:22:29,248 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:23:43,800 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:23:43,811 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:23:43,811 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:23:43,812 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:26:49,299 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:26:49,311 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:26:49,311 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:26:49,311 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:28:08,744 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:28:08,756 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:28:08,756 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:28:08,756 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:29:21,405 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:29:21,416 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:29:21,417 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:29:21,417 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:31:20,292 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:31:20,303 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:31:20,303 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:31:20,303 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:31:54,768 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:31:54,780 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:31:54,780 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:31:54,780 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:35:06,415 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:35:06,426 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:35:06,427 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:35:06,427 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 01:35:49,938 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:35:49,949 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 01:35:49,950 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 01:35:49,950 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 08:57:54,456 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 08:57:54,467 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 08:57:54,467 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 08:57:54,467 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:01:58,292 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:01:58,303 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:01:58,303 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:01:58,303 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:03:14,895 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:03:14,906 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:03:14,906 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:03:14,906 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:04:06,575 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:04:06,587 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:04:06,587 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:04:06,587 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:05:33,113 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:05:33,124 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:05:33,125 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:05:33,125 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:05:56,832 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:05:56,843 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:05:56,843 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:05:56,844 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:06:56,234 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:06:56,245 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:06:56,246 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:06:56,246 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:09:15,978 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:09:15,989 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:09:15,989 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:09:15,989 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:10:09,151 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:10:09,163 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:10:09,163 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:10:09,163 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:11:08,233 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:11:08,244 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:11:08,245 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:11:08,245 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:12:39,769 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:12:39,780 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:12:39,781 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:12:39,781 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:31:34,658 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:31:34,670 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:31:34,670 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:31:34,670 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:57:50,215 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:57:50,227 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:57:50,228 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:57:50,228 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 09:59:29,223 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:59:29,235 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 09:59:29,235 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 09:59:29,235 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:00:10,488 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:00:10,499 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:00:10,500 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:00:10,500 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:22:43,412 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:22:43,423 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:22:43,424 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:22:43,424 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:25:10,197 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:25:10,208 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:25:10,209 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:25:10,209 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:27:14,814 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:27:14,826 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:27:14,826 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:27:14,826 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:29:02,406 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:29:02,418 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:29:02,418 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:29:02,418 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:30:30,213 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:30:30,224 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:30:30,225 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:30:30,225 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:31:18,102 INFO] Processed instances 1000
+[2022-07-02 10:31:18,103 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-02 10:31:19,697 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-02 10:32:08,556 INFO] Processed instances 1000
+[2022-07-02 10:32:08,556 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-02 10:32:10,143 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-02 10:32:58,570 INFO] Processed instances 1000
+[2022-07-02 10:32:58,570 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-02 10:33:00,168 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-02 10:33:48,462 INFO] Processed instances 1000
+[2022-07-02 10:33:48,463 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-02 10:33:50,054 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-02 10:34:37,459 INFO] Processed instances 1000
+[2022-07-02 10:34:37,460 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-02 10:34:39,072 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-02 10:35:27,144 INFO] Processed instances 1000
+[2022-07-02 10:35:27,145 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-02 10:35:28,793 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-02 10:36:16,039 INFO] Processed instances 1000
+[2022-07-02 10:36:16,039 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-02 10:36:17,649 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-02 10:36:36,214 INFO] Processed instances 379
+[2022-07-02 10:36:36,214 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-02 10:36:36,964 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-02 10:37:24,636 INFO] Processed instances 1000
+[2022-07-02 10:37:24,636 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-02 10:37:26,128 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-07-02 10:37:26,130 INFO] Total examples: 8379
+[2022-07-02 10:37:26,130 INFO] Exceed length sentences number: 0
+[2022-07-02 10:37:26,130 INFO] Average src token length: 0.000000
+[2022-07-02 10:37:26,130 INFO] token num 0 ~ 300: 8379, 1.00%
+[2022-07-02 10:37:26,130 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-07-02 10:37:26,130 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-07-02 10:37:26,130 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-07-02 10:37:26,130 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-07-02 10:37:26,130 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-07-02 10:37:26,130 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-07-02 10:37:26,131 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-07-02 10:37:26,131 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-07-02 10:37:26,131 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-07-02 10:37:26,131 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-07-02 10:37:26,131 INFO] Average tgt length: 0.000000
+[2022-07-02 10:52:04,937 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:52:04,949 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 10:52:04,949 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 10:52:04,949 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 10:52:45,836 INFO] Processed instances 1000
+[2022-07-02 10:52:45,836 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-02 10:52:52,713 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-02 10:53:34,506 INFO] Processed instances 1000
+[2022-07-02 10:53:34,506 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-02 10:53:41,285 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-02 10:54:22,828 INFO] Processed instances 1000
+[2022-07-02 10:54:22,828 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-02 10:54:29,761 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-02 10:55:11,666 INFO] Processed instances 1000
+[2022-07-02 10:55:11,667 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-02 10:55:18,258 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-02 10:55:59,044 INFO] Processed instances 1000
+[2022-07-02 10:55:59,044 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-02 10:56:05,556 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-02 10:56:46,811 INFO] Processed instances 1000
+[2022-07-02 10:56:46,811 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-02 10:56:53,532 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-02 10:57:35,130 INFO] Processed instances 1000
+[2022-07-02 10:57:35,131 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-02 10:57:41,926 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-02 10:57:58,362 INFO] Processed instances 379
+[2022-07-02 10:57:58,362 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-02 10:58:00,944 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-02 10:58:42,075 INFO] Processed instances 1000
+[2022-07-02 10:58:42,075 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-02 10:58:48,725 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-07-02 10:58:48,727 INFO] Total examples: 8379
+[2022-07-02 10:58:48,727 INFO] Exceed length sentences number: 0
+[2022-07-02 10:58:48,727 INFO] Average src token length: 0.000000
+[2022-07-02 10:58:48,727 INFO] token num 0 ~ 300: 8379, 1.00%
+[2022-07-02 10:58:48,727 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-07-02 10:58:48,727 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-07-02 10:58:48,728 INFO] Average tgt length: 0.000000
+[2022-07-02 11:56:06,486 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 11:56:06,497 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 11:56:06,497 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 11:56:06,497 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 11:56:39,348 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 11:56:39,359 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 11:56:39,360 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 11:56:39,360 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 11:58:59,620 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 11:58:59,631 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 11:58:59,631 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 11:58:59,631 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:01:09,763 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:01:09,774 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:01:09,775 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:01:09,775 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:02:49,665 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:02:49,676 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:02:49,677 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:02:49,677 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:04:30,536 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:04:30,548 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:04:30,548 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:04:30,548 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:06:14,848 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:06:14,859 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:06:14,860 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:06:14,860 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:07:43,212 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:07:43,223 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:07:43,223 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:07:43,223 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:08:34,501 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:08:34,513 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:08:34,513 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:08:34,513 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:09:20,063 INFO] Processed instances 1000
+[2022-07-02 12:09:20,064 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-02 12:09:21,766 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-02 12:10:03,506 INFO] Processed instances 1000
+[2022-07-02 12:10:03,507 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-02 12:10:05,318 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-02 12:10:45,697 INFO] Processed instances 1000
+[2022-07-02 12:10:45,698 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-02 12:10:47,647 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-02 12:11:29,170 INFO] Processed instances 1000
+[2022-07-02 12:11:29,170 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-02 12:11:30,875 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-02 12:12:11,893 INFO] Processed instances 1000
+[2022-07-02 12:12:11,893 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-02 12:12:13,661 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-02 12:12:55,022 INFO] Processed instances 1000
+[2022-07-02 12:12:55,022 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-02 12:12:56,775 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-02 12:13:37,951 INFO] Processed instances 1000
+[2022-07-02 12:13:37,952 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-02 12:13:39,716 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-02 12:13:56,085 INFO] Processed instances 379
+[2022-07-02 12:13:56,086 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-02 12:13:56,872 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-02 12:14:38,121 INFO] Processed instances 1000
+[2022-07-02 12:14:38,121 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-02 12:14:39,756 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-07-02 12:14:39,758 INFO] Total examples: 8379
+[2022-07-02 12:14:39,758 INFO] Exceed length sentences number: 0
+[2022-07-02 12:14:39,758 INFO] Average src token length: 0.000000
+[2022-07-02 12:14:39,758 INFO] token num 0 ~ 300: 8379, 1.00%
+[2022-07-02 12:14:39,759 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-07-02 12:14:39,759 INFO] Average tgt length: 0.000000
+[2022-07-02 12:27:59,921 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:27:59,933 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:27:59,933 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:27:59,933 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:28:40,991 INFO] Processed instances 1000
+[2022-07-02 12:28:40,991 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-02 12:28:42,653 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-02 12:29:24,176 INFO] Processed instances 1000
+[2022-07-02 12:29:24,177 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-02 12:29:25,890 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-02 12:30:07,155 INFO] Processed instances 1000
+[2022-07-02 12:30:07,155 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-02 12:30:08,880 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-02 12:30:50,422 INFO] Processed instances 1000
+[2022-07-02 12:30:50,422 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-02 12:30:52,108 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-02 12:31:32,703 INFO] Processed instances 1000
+[2022-07-02 12:31:32,703 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-02 12:31:34,389 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-02 12:32:16,307 INFO] Processed instances 1000
+[2022-07-02 12:32:16,307 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-02 12:32:18,012 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-02 12:32:58,588 INFO] Processed instances 1000
+[2022-07-02 12:32:58,588 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-02 12:33:00,317 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-02 12:33:17,023 INFO] Processed instances 379
+[2022-07-02 12:33:17,024 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-02 12:33:17,829 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-02 12:33:58,542 INFO] Processed instances 1000
+[2022-07-02 12:33:58,543 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-02 12:34:00,167 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-07-02 12:34:00,169 INFO] Total examples: 8379
+[2022-07-02 12:34:00,169 INFO] Exceed length sentences number: 0
+[2022-07-02 12:34:00,169 INFO] Average src token length: 0.000000
+[2022-07-02 12:34:00,169 INFO] token num 0 ~ 300: 8379, 1.00%
+[2022-07-02 12:34:00,170 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-07-02 12:34:00,170 INFO] Average tgt length: 0.000000
+[2022-07-02 12:38:48,416 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:38:48,427 INFO] setting ignored attribute vectors_norm to None
+[2022-07-02 12:38:48,427 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-02 12:38:48,427 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-02 12:39:28,923 INFO] Processed instances 1000
+[2022-07-02 12:39:28,923 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-02 12:39:31,129 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-02 12:40:14,050 INFO] Processed instances 1000
+[2022-07-02 12:40:14,050 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-02 12:40:16,249 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-02 12:40:57,942 INFO] Processed instances 1000
+[2022-07-02 12:40:57,943 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-02 12:41:00,143 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-02 12:41:42,440 INFO] Processed instances 1000
+[2022-07-02 12:41:42,441 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-02 12:41:44,689 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-02 12:42:27,412 INFO] Processed instances 1000
+[2022-07-02 12:42:27,412 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-02 12:42:29,654 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-02 12:43:12,487 INFO] Processed instances 1000
+[2022-07-02 12:43:12,488 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-02 12:43:14,729 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-02 12:43:56,042 INFO] Processed instances 1000
+[2022-07-02 12:43:56,042 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-02 12:43:58,229 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.0.json
+[2022-07-02 12:44:40,888 INFO] Processed instances 1000
+[2022-07-02 12:44:40,888 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.0.bert.pt
+[2022-07-02 12:44:43,099 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-02 12:44:59,221 INFO] Processed instances 379
+[2022-07-02 12:44:59,222 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-02 12:45:00,357 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-02 12:45:42,616 INFO] Processed instances 1000
+[2022-07-02 12:45:42,617 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-02 12:45:44,834 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.1.json
+[2022-07-02 12:45:48,243 INFO] Processed instances 60
+[2022-07-02 12:45:48,243 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.1.bert.pt
+[2022-07-02 12:45:48,945 INFO] Saving file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info.pt
+[2022-07-02 12:45:48,948 INFO] Total examples: 9439
+[2022-07-02 12:45:48,948 INFO] Exceed length sentences number: 0
+[2022-07-02 12:45:48,949 INFO] Average src token length: 0.000000
+[2022-07-02 12:45:48,949 INFO] token num 0 ~ 300: 9439, 1.00%
+[2022-07-02 12:45:48,949 INFO] token num 300 ~ 600: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 600 ~ 900: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 900 ~ 1200: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 1200 ~ 1500: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 1500 ~ 1800: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 1800 ~ 2100: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 2100 ~ 2400: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 2400 ~ 2700: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 2700 ~ 3000: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] token num 3000 ~ 3300: 0, 0.00%
+[2022-07-02 12:45:48,949 INFO] Average tgt length: 0.000000
+[2022-07-06 00:20:32,567 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:20:32,578 INFO] setting ignored attribute vectors_norm to None
+[2022-07-06 00:20:32,578 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:20:32,578 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-06 00:21:45,035 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:21:45,047 INFO] setting ignored attribute vectors_norm to None
+[2022-07-06 00:21:45,047 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:21:45,047 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-06 00:25:42,766 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:25:42,777 INFO] setting ignored attribute vectors_norm to None
+[2022-07-06 00:25:42,777 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:25:42,777 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-06 00:27:25,527 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:27:25,538 INFO] setting ignored attribute vectors_norm to None
+[2022-07-06 00:27:25,538 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:27:25,539 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-06 00:29:34,114 INFO] loading Word2VecKeyedVectors object from /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:29:34,128 INFO] setting ignored attribute vectors_norm to None
+[2022-07-06 00:29:34,129 INFO] loaded /disk1/sajad/w2v_embeds/w2v_mup_reduced.emb
+[2022-07-06 00:29:34,129 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.1.json
+[2022-07-06 00:29:44,635 INFO] Processed instances 1000
+[2022-07-06 00:29:44,635 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.1.bert.pt
+[2022-07-06 00:29:47,302 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.7.json
+[2022-07-06 00:29:57,288 INFO] Processed instances 1000
+[2022-07-06 00:29:57,289 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.7.bert.pt
+[2022-07-06 00:29:59,786 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.3.json
+[2022-07-06 00:30:10,055 INFO] Processed instances 1000
+[2022-07-06 00:30:10,056 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.3.bert.pt
+[2022-07-06 00:30:12,553 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.6.json
+[2022-07-06 00:30:22,514 INFO] Processed instances 1000
+[2022-07-06 00:30:22,514 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.6.bert.pt
+[2022-07-06 00:30:24,987 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.0.json
+[2022-07-06 00:30:35,048 INFO] Processed instances 1000
+[2022-07-06 00:30:35,049 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.0.bert.pt
+[2022-07-06 00:30:37,544 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.2.json
+[2022-07-06 00:30:47,755 INFO] Processed instances 1000
+[2022-07-06 00:30:47,755 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.2.bert.pt
+[2022-07-06 00:30:50,257 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.5.json
+[2022-07-06 00:31:00,255 INFO] Processed instances 1000
+[2022-07-06 00:31:00,255 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.5.bert.pt
+[2022-07-06 00:31:03,011 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.0.json
+[2022-07-06 00:31:13,373 INFO] Processed instances 1000
+[2022-07-06 00:31:13,373 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.0.bert.pt
+[2022-07-06 00:31:15,898 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.8.json
+[2022-07-06 00:31:19,289 INFO] Processed instances 379
+[2022-07-06 00:31:19,289 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.8.bert.pt
+[2022-07-06 00:31:20,522 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/train.4.json
+[2022-07-06 00:31:30,664 INFO] Processed instances 1000
+[2022-07-06 00:31:30,664 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/train.4.bert.pt
+[2022-07-06 00:31:33,413 INFO] Processing /disk1/sajad/datasets/sci/mup/jsons/val.1.json
+[2022-07-06 00:31:34,514 INFO] Processed instances 60
+[2022-07-06 00:31:34,514 INFO] Saving to /disk1/sajad/datasets/sci/mup/bert_data/val.1.bert.pt
+[2022-07-06 00:31:35,222 INFO] Saving global file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info_global.pt
+[2022-07-06 00:31:35,226 INFO] Saving section file counter to /disk1/sajad/datasets/sci/mup/bert_data/idf_info_section.pt

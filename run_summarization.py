@@ -41,6 +41,7 @@ from models.GSum_trainer import TGSumTrainer
 # from models.modeling_TGSum import TGSumForConditionalGeneration
 from models.sequential_TGSum.modeling_TGSum import TGSumForConditionalGeneration
 from models.tokenization_TGSum import TGSumTokenizer
+from models.tokenization_TGSum_extractor import TGSumTokenizerExt
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -134,6 +135,9 @@ class ModelArguments:
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )
     tokenizer_name: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+    )
+    ext_tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
     cache_dir: Optional[str] = field(
@@ -468,14 +472,22 @@ def main():
     # config.gradient_checkpointing = True
     #TGSumTokenizer
 
-    tokenizer = TGSumTokenizer.from_pretrained(
-        # model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-        '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/',
+    abs_tokenizer = TGSumTokenizer.from_pretrained(
+        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+
+    ext_tokenizer = TGSumTokenizerExt.from_pretrained(
+        model_args.ext_tokenizer_name if model_args.ext_tokenizer_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        use_fast=model_args.use_fast_tokenizer,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+
     #TGSumForConditionalGeneration
     model, loading_info = TGSumForConditionalGeneration.from_pretrained(
         model_args.model_name_or_path,
@@ -494,7 +506,7 @@ def main():
     # tokenizer.add_special_tokens(special_tokens_dict)
     # intialize word embeddings...
 
-    model.resize_token_embeddings(len(tokenizer))
+    model.resize_token_embeddings(len(abs_tokenizer))
     model.led.shared.weight.requires_grad = False
     model.led.shared.weight[-1, :] = model.led.shared.weight[2, :]
     model.led.shared.weight[-2, :] = model.led.shared.weight[0, :]
@@ -509,11 +521,11 @@ def main():
     # model.config.early_stopping = True
     model.config.no_repeat_ngram_size = 3
 
-    if model.config.decoder_start_token_id is None and isinstance(tokenizer, (MBartTokenizer, MBartTokenizerFast)):
-        if isinstance(tokenizer, MBartTokenizer):
-            model.config.decoder_start_token_id = tokenizer.lang_code_to_id[data_args.lang]
+    if model.config.decoder_start_token_id is None and isinstance(abs_tokenizer, (MBartTokenizer, MBartTokenizerFast)):
+        if isinstance(abs_tokenizer, MBartTokenizer):
+            model.config.decoder_start_token_id = abs_tokenizer.lang_code_to_id[data_args.lang]
         else:
-            model.config.decoder_start_token_id = tokenizer.convert_tokens_to_ids(data_args.lang)
+            model.config.decoder_start_token_id = abs_tokenizer.convert_tokens_to_ids(data_args.lang)
 
     if model.config.decoder_start_token_id is None:
         raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
@@ -554,18 +566,18 @@ def main():
         logger.info("There is nothing to do. Please pass `do_train`, `do_eval` and/or `do_predict`.")
         return
 
-    if isinstance(tokenizer, tuple(MULTILINGUAL_TOKENIZERS)):
+    if isinstance(abs_tokenizer, tuple(MULTILINGUAL_TOKENIZERS)):
         assert (
             data_args.lang is not None
-        ), f"{tokenizer.__class__.__name__} is a multilingual tokenizer which requires --lang argument"
+        ), f"{abs_tokenizer.__class__.__name__} is a multilingual tokenizer which requires --lang argument"
 
-        tokenizer.src_lang = data_args.lang
-        tokenizer.tgt_lang = data_args.lang
+        abs_tokenizer.src_lang = data_args.lang
+        abs_tokenizer.tgt_lang = data_args.lang
 
         # For multilingual translation models like mBART-50 and M2M100 we need to force the target language token
         # as the first generated token. We ask the user to explicitly provide this as --forced_bos_token argument.
         forced_bos_token_id = (
-            tokenizer.lang_code_to_id[data_args.forced_bos_token] if data_args.forced_bos_token is not None else None
+            abs_tokenizer.lang_code_to_id[data_args.forced_bos_token] if data_args.forced_bos_token is not None else None
         )
         model.config.forced_bos_token_id = forced_bos_token_id
 
@@ -641,7 +653,23 @@ def main():
                 tgt_ids.extend(len(valid_targets) * [examples["paper_id"][i]])
 
         topic_info_tuple = {"topic_info_global": topic_info_global}
-        model_inputs = tokenizer(
+
+        # ext_model_inputs = ext_tokenizer(
+        #     inputs,
+        #     # inputs_tokenized=inputs_tokenized,
+        #     # target_tokenized=target_tokenized,
+        #     max_length=data_args.max_source_length,
+        #     padding=padding,
+        #     truncation=True,
+        #     doc_ids=src_ids,
+        #     section_headings=headings,
+        #     topic_info_tuple=topic_info_tuple,
+        #     ext_labels=ext_labels,
+        #     section_scores=section_scores,
+        #     labeling=model_args.labeling,
+        #  )
+
+        model_inputs = abs_tokenizer(
             inputs,
             # inputs_tokenized=inputs_tokenized,
             # target_tokenized=target_tokenized,
@@ -655,18 +683,21 @@ def main():
             section_scores=section_scores,
             labeling=model_args.labeling,
          )
+
+        model_inputs['input_ids_ext'] = ext_model_inputs['input_ids']
+
         # import pdb;pdb.set_trace()
 
         # Setup the tokenizer for targets
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(targets, max_length=max_target_length, padding=padding, truncation=True, doc_ids=['tgt-'+t for t in tgt_ids],is_target=True)
+        with abs_tokenizer.as_target_tokenizer():
+            labels = abs_tokenizer(targets, max_length=max_target_length, padding=padding, truncation=True, doc_ids=['tgt-'+t for t in tgt_ids],is_target=True)
 
 
         # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
         # padding in the loss.
         if padding == "max_length" and data_args.ignore_pad_token_for_loss:
             labels["input_ids"] = [
-                [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
+                [(l if l != abs_tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
             ]
 
         model_inputs["attention_mask"] = model_inputs.attention_mask
@@ -745,9 +776,9 @@ def main():
             )
 
     # Data collator
-    label_pad_token_id = -100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
+    label_pad_token_id = -100 if data_args.ignore_pad_token_for_loss else abs_tokenizer.pad_token_id
     data_collator = DataCollatorForSeq2Seq(
-        tokenizer,
+        abs_tokenizer,
         model=model,
         label_pad_token_id=label_pad_token_id,
         pad_to_multiple_of=8 if training_args.fp16 else None,
@@ -794,7 +825,7 @@ def main():
         preds, labels, doc_ids = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_preds = abs_tokenizer.batch_decode(preds, skip_special_tokens=True)
         # if data_args.ignore_pad_token_for_loss:
             # Replace -100 in the labels as we can't decode them.
             # labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
@@ -954,7 +985,7 @@ def main():
         # mean over all results...
         result = {k: np.mean(v) * 100 for k, v in result.items()}
 
-        prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
+        prediction_lens = [np.count_nonzero(pred != abs_tokenizer.pad_token_id) for pred in preds]
         result["gen_len"] = np.mean(prediction_lens)
         result = {k: round(v, 4) for k, v in result.items()}
         return result
@@ -982,7 +1013,7 @@ def main():
         loading_info=loading_info,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
-        tokenizer=tokenizer,
+        tokenizer=abs_tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics if training_args.predict_with_generate else None,
     )
@@ -1041,7 +1072,7 @@ def main():
 
         if trainer.is_world_process_zero():
             if training_args.predict_with_generate:
-                predictions = tokenizer.batch_decode(
+                predictions = abs_tokenizer.batch_decode(
                     predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
                 )
                 predictions = [pred.strip() for pred in predictions]
