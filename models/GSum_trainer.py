@@ -310,9 +310,8 @@ class TGSumTrainer(Seq2SeqTrainer):
 
             step = -1
             for step, inputs in enumerate(epoch_iterator):
-                # import pdb;pdb.set_trace()
-                if step < 1380:
-                    continue
+                # if step < 1380:
+                #     continue
                 # else:
                 #     steps_trained_progress_bar.update(step)
 
@@ -460,6 +459,9 @@ class TGSumTrainer(Seq2SeqTrainer):
             self._load_best_model()
 
         # add remaining tr_loss
+        import pdb;pdb.set_trace()
+
+
         self._total_loss_scalar += tr_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
 
@@ -503,14 +505,17 @@ class TGSumTrainer(Seq2SeqTrainer):
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
             # if self.is_topic_task():
-            logs["topic_loss"] = round(tp_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if tp_tr_loss_scalar > 0:
+                logs["topic_loss"] = round(tp_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
             # if self.is_all_task():
             logs["lm_loss"] = round(lm_tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
 
             # if self.is_ext_task():
             logs["sent_loss"] = round(sent_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 6)
-            logs["sect_loss"] = round(sect_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 6)
+
+            if sect_loss_scalar > 0:
+                logs["sect_loss"] = round(sect_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 6)
 
             logs["learning_rate"] = self._get_learning_rate()
 
@@ -562,18 +567,19 @@ class TGSumTrainer(Seq2SeqTrainer):
         # pdb.set_trace()
 
         lm_loss = loss
-        loss = loss + (0.1 * topic_loss) + (0.2*sect_loss + 0.2*sent_loss)
+        # loss = loss + (0.1 * topic_loss) + (0.2*sect_loss + 0.2*sent_loss)
+        loss = (0.5* lm_loss) + (0.5*sent_loss)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
-            topic_loss = topic_loss.mean()   # mean() to average on multi-gpu parallel training
+            # topic_loss = topic_loss.mean()   # mean() to average on multi-gpu parallel training
             sect_loss = sect_loss.mean()   # mean() to average on multi-gpu parallel training
             sent_loss = sent_loss.mean()   # mean() to average on multi-gpu parallel training
 
         if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
             # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
             loss = loss / self.args.gradient_accumulation_steps
-            topic_loss = topic_loss / self.args.gradient_accumulation_steps
+            # topic_loss = topic_loss / self.args.gradient_accumulation_steps
             sect_loss = sect_loss / self.args.gradient_accumulation_steps
             sent_loss = sent_loss / self.args.gradient_accumulation_steps
 
@@ -585,9 +591,9 @@ class TGSumTrainer(Seq2SeqTrainer):
             loss.backward()
 
         return loss.detach(), \
-               topic_loss.detach(), \
+               topic_loss.detach() if topic_loss is not None else torch.tensor(-1.0), \
                lm_loss.detach(), \
-               sect_loss.detach(), \
+               sect_loss.detach() if sect_loss is not None else torch.tensor(-1.0), \
                sent_loss.detach()
 
     def create_optimizer(self):
@@ -707,6 +713,7 @@ class TGSumTrainer(Seq2SeqTrainer):
         with torch.no_grad():
             generated_tokens = self.model.generate(
                 generation_inputs,
+                input_ids_ext=inputs['input_ids_ext'],
                 src_bow_global=inputs['src_bow_global'],
                 ext_labels=inputs['ext_labels'],
                 section_scores=inputs['section_scores'],

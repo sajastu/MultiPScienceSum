@@ -5,7 +5,6 @@ export CUDA_VISIBLE_DEVICES=0,1
 USER=$1
 export MODEL_NAME=allenai/led-large-16384-arxiv
 export EXT_MODEL_NAME=roberta-large
-
 #export MODEL_NAME=allenai/led-base-16384
 export DS_DIR=/disk1/sajad/datasets/sci/mup/hf_format/
 export HF_DATASETS_CACHE=/disk0/$USER/.cache/huggingface
@@ -13,12 +12,11 @@ export HF_DATASETS_CACHE=/disk0/$USER/.cache/huggingface
 # 8380
 #python -m torch.distributed.launch --nproc_per_node=2 run_summarization.py \
 CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
-    --mode train \
     --model_name_or_path $MODEL_NAME \
     --tokenizer_name $MODEL_NAME \
     --ext_model_name_or_path $EXT_MODEL_NAME \
     --ext_tokenizer_name $EXT_MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-Roberta-led-arxiv-5120-3072-AllSents \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-2048-6144-AllSents-PrepConc-fixed \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
@@ -34,15 +32,15 @@ CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --predict_with_generate \
     --max_grad_norm 1 \
     --lr_scheduler_type linear \
-    --eval_steps 4190 --save_steps 4190 \
+    --eval_steps 130 --save_steps 4190 \
     --train_file $DS_DIR/train-sectScoreV1-srcTokenized.parquet \
     --validation_file $DS_DIR/val-sectScoreV1-srcTokenized.parquet \
     --do_train \
     --do_eval \
     --report_to none \
-    --run_name mup-Roberta-led-arxiv-6144-3072-AllSents \
-    --max_source_length 5120 \
-    --preprocessing_num_workers 5 \
+    --run_name mup-led-arxiv-2048-6144-AllSents-PrepConc-fixed \
+    --max_source_length 6144 \
+    --preprocessing_num_workers 1 \
     --metric_for_best_model rougeL_f \
     --greater_is_better True \
     --labeling dynamic \

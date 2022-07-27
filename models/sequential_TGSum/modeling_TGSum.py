@@ -34,6 +34,7 @@ import torch.nn.functional as F
 # from graph_data_prepartion.preprocess_utils.conceptnet import merged_relations
 from data_processor.others.vocab_wrapper import VocabWrapper
 from models.encoder_sect import TransformerEncoder
+from models.extractor import ExtractorFirstStep
 from models.generation_utils import GenerationMixin
 from models.networks.decoding_network import DecoderNetwork
 from models.sequential_TGSum.roberta_tgsum import RobertaEncoder
@@ -560,13 +561,13 @@ class TGSumDecoderLayer(nn.Module):
 
         self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
 
-        self.encoder_attn_section = LEDDecoderAttention(
-            self.embed_dim,
-            config.decoder_attention_heads,
-            dropout=config.attention_dropout,
-            is_decoder=True,
-        )
-        self.encoder_attn_layer_norm_section = nn.LayerNorm(self.embed_dim)
+        # self.encoder_attn_section = LEDDecoderAttention(
+        #     self.embed_dim,
+        #     config.decoder_attention_heads,
+        #     dropout=config.attention_dropout,
+        #     is_decoder=True,
+        # )
+        # self.encoder_attn_layer_norm_section = nn.LayerNorm(self.embed_dim)
 
         # if self.use_topic:
 
@@ -643,26 +644,27 @@ class TGSumDecoderLayer(nn.Module):
             residual = hidden_states
 
             cross_attn_past_key_value_word = past_key_value[2:4] if past_key_value is not None else None
-            cross_attn_past_key_value_section = past_key_value[4:] if past_key_value is not None else None
 
-            hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
-                self.encoder_attn_section(
-                    hidden_states=hidden_states,  # decoder query
-                    key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
-                    attention_mask=encoder_attention_mask_section,
-                    layer_head_mask=cross_attn_layer_head_mask,
-                    past_key_value=cross_attn_past_key_value_section,
-                    output_attentions=output_attentions,
-                )
-            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-            hidden_states = residual + hidden_states
-            hidden_states = self.encoder_attn_layer_norm_section(hidden_states)
+            if encoder_attention_mask_section is not None:
+                cross_attn_past_key_value_section = past_key_value[4:] if past_key_value is not None else None
+
+                hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
+                    self.encoder_attn_section(
+                        hidden_states=hidden_states,  # decoder query
+                        key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
+                        attention_mask=encoder_attention_mask_section,
+                        layer_head_mask=cross_attn_layer_head_mask,
+                        past_key_value=cross_attn_past_key_value_section,
+                        output_attentions=output_attentions,
+                    )
+                hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+                hidden_states = residual + hidden_states
+                hidden_states = self.encoder_attn_layer_norm_section(hidden_states)
 
             hidden_states, cross_attn_weights_word, cross_attn_present_key_value_word = \
                 self.encoder_attn(
                     hidden_states=hidden_states,  # decoder query
-                    # key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states.unsqueeze(0).repeat(encoder_attention_mask.size(0), 1, 1),
-                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1) if self.training else encoder_hidden_states,
+                    key_value_states=encoder_hidden_states.repeat(hidden_states.size(0), 1, 1),
                     attention_mask=encoder_attention_mask,
                     layer_head_mask=cross_attn_layer_head_mask,
                     past_key_value=cross_attn_past_key_value_word,
@@ -673,9 +675,10 @@ class TGSumDecoderLayer(nn.Module):
             hidden_states = self.encoder_attn_layer_norm(hidden_states)
 
 
-
-            present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_section
-            # present_key_value = present_key_value + cross_attn_present_key_value_word
+            if encoder_attention_mask_section is not None:
+                present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_section
+            else:
+                present_key_value = present_key_value + cross_attn_present_key_value_word
 
         # Fully Connected
         residual = hidden_states
@@ -868,14 +871,16 @@ class TGSumDecoder(LEDDecoder):
 
                 encoder_attention_mask_section = ~(summ_attn_mask[:, None, :, None].expand_as(
                     _expand_mask(encoder_attention_mask_section.repeat(input_shape[0], 1),
-                                 inputs_embeds.dtype, tgt_len=input_shape[-1])).bool())
-                encoder_attention_mask_section = encoder_attention_mask_section.int()
+                                 inputs_embeds.dtype, tgt_len=input_shape[-1])).bool()) if encoder_attention_mask_section is not None else None
+                encoder_attention_mask_section = encoder_attention_mask_section.int() if encoder_attention_mask_section is not None else None
+
 
             else:
                 if not self.training:
                     encoder_attention_mask = _expand_mask(encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
                     # import pdb;pdb.set_trace()
-                    encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section, inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section, inputs_embeds.dtype, tgt_len=input_shape[-1]) if encoder_attention_mask_section is not None else None
+
                     # encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section, inputs_embeds.dtype, tgt_len=input_shape[-1])
 
                 else:
@@ -883,7 +888,7 @@ class TGSumDecoder(LEDDecoder):
                         encoder_attention_mask = _expand_mask(encoder_attention_mask.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
                     except:
                         import pdb;pdb.set_trace()
-                    encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1])
+                    encoder_attention_mask_section = _expand_mask(encoder_attention_mask_section.repeat(input_shape[0], 1), inputs_embeds.dtype, tgt_len=input_shape[-1]) if encoder_attention_mask_section is not None else None
 
 
 
@@ -1001,7 +1006,7 @@ class TGSumDecoder(LEDDecoder):
 
 class TGSumModel(LEDModel):
 
-    def __init__(self, config: LEDConfig, use_topic=False, sampling_from='all'):
+    def __init__(self, config: LEDConfig, ext_config: RobertaConfig, use_topic=False, sampling_from='all'):
 
         # config.prefix = 'led'
         # self.base_model_prefix = 'led'
@@ -1010,7 +1015,9 @@ class TGSumModel(LEDModel):
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
 
         self.sent_scorer = nn.Linear(config.d_model, 1)
-        self.sect_scorer = nn.Linear(config.d_model, 1)
+        # self.sect_scorer = nn.Linear(config.d_model, 1)
+
+        self.extractor = ExtractorFirstStep(ext_config)
 
         self.encoder = LEDEncoder(config, self.shared)
         self.encoder.gradient_checkpointing = True
@@ -1022,31 +1029,33 @@ class TGSumModel(LEDModel):
 
         self.use_topic = use_topic
 
-        topic_emb_size = 300
-        self.top_words_dim = 3001
 
-        self.is_hier = True
-        if self.is_hier:
-            self.hier_encoder = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
-                                                   dropout=0.2, num_inter_layers=2)
+
+        # self.is_hier = True
+        # if self.is_hier:
+        #     self.hier_encoder = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
+        #                                            dropout=0.2, num_inter_layers=2)
                 # roberta_config = RobertaConfig.from_pretrained('roberta-large')
                 # roberta_config.num_hidden_layers = 4
                 # self.hier_encoder = RobertaEncoder(roberta_config)
 
         self.SAMPLING_FROM = sampling_from
-        self.num_topics = 100
-        self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
-                                          infnet='combined', n_components=self.num_topics, model_type='prodLDA',
-                                          hidden_sizes=(100, 100), activation='softplus',
-                                          dropout=0.2, learn_priors=True, label_size=0)
 
-        self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, config.d_model)
-        self.topic_emb_linear = nn.Linear(topic_emb_size, config.d_model)
-
-        for p in self.topic_gate_linear.parameters():
-            self._set_parameter_linear(p)
-        for p in self.topic_emb_linear.parameters():
-            self._set_parameter_linear(p)
+        # topic_emb_size = 300
+        # self.top_words_dim = 3001
+        # self.num_topics = 100
+        # self.topic_model = DecoderNetwork(input_size=self.top_words_dim, bert_size=config.d_model,
+        #                                   infnet='combined', n_components=self.num_topics, model_type='prodLDA',
+        #                                   hidden_sizes=(100, 100), activation='softplus',
+        #                                   dropout=0.2, learn_priors=True, label_size=0)
+        #
+        # self.topic_gate_linear = nn.Linear(config.d_model + topic_emb_size, config.d_model)
+        # self.topic_emb_linear = nn.Linear(topic_emb_size, config.d_model)
+        #
+        # for p in self.topic_gate_linear.parameters():
+        #     self._set_parameter_linear(p)
+        # for p in self.topic_emb_linear.parameters():
+        #     self._set_parameter_linear(p)
 
 
     def _set_parameter_linear(self, p):
@@ -1095,6 +1104,9 @@ class TGSumModel(LEDModel):
     def get_encoder(self):
         return self.encoder
 
+    def get_extractor(self):
+        return self.extractor
+
     def is_hier(self):
         return self.is_hier
 
@@ -1116,12 +1128,41 @@ class TGSumModel(LEDModel):
     def get_decoder(self):
         return self.decoder
 
+    def get_prepare_inputs_for_extrator(self):
+        return self.prepare_inputs_for_extrator
+
     def get_repr_from_index(self, from_tensor, index):
         return from_tensor[:,index, :]
+
+    def prepare_inputs_for_extrator(self, input_ids_ext):
+        """
+
+            @input: [BSZ, SEQ_LEN]
+
+            @output: [BSZ, N, SEQ_LEN]
+                @param: N: the number of cunks
+
+
+        """
+
+        input_ids_ext = torch.tensor_split(input_ids_ext[0, :].cuda(), ((input_ids_ext[0] == -1000000).nonzero(as_tuple=True)[0]).cpu())
+        input_ids_ext = pad_sequence(input_ids_ext[1:], batch_first=True, padding_value=1)[:, 1:-1].unsqueeze(0) # drop -1000000
+        # if input_ids_ext.shape[-1] < 512:
+        #     diff = 512 - input_ids_ext.shape[-1]
+        #     t_shape = input_ids_ext.shape
+        #     appended_tensor = torch.ones((t_shape[0], t_shape[1], diff)).cuda()
+        #     input_ids_ext = torch.cat([input_ids_ext, appended_tensor], dim=-1)
+
+        input_ids_ext = input_ids_ext.long() # make sure the tensor is a Long tensor
+
+        return input_ids_ext
+
+
 
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
+        input_ids_ext: Optional[torch.LongTensor] = None,
         src_bow_global=None,
         src_bow_section=None,
         doc_ids=None,
@@ -1153,6 +1194,8 @@ class TGSumModel(LEDModel):
     ) -> Union[Tuple[torch.Tensor], LEDSeq2SeqModelOutput]:
 
 
+        LIMIT = 3072
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None
@@ -1160,15 +1203,45 @@ class TGSumModel(LEDModel):
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        if decoder_input_ids is None and decoder_inputs_embeds is None:
-            # import pdb;
-            # pdb.set_trace()
-            decoder_input_ids = shift_tokens_right(
-                input_ids, self.config.pad_token_id, self.config.decoder_start_token_id
-            )
-
+        sent_scores = None
         if encoder_outputs is None:
+            input_ids_ext = self.prepare_inputs_for_extrator(input_ids_ext)
+            sent_scores = self.extractor(input_ids_ext)
+
+
+            # top_sents_ids are the sentences extracted by the first-step Extractor
+            top_sents_ids = torch.argsort(sent_scores, descending=True)
+
+            sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+            end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+
+            sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+
+
+            # top_sents_len.scatter_(1, top_sents_ids, sent_len)
+            top_sents_len = torch.index_select(sent_len, 1, top_sents_ids[0])
+            top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
+            top_sents_ids = top_sents_ids[:, :top_sents_included]
+
+            top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
+            sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
+            top_sens_end_ids = top_sents_start_ids + sent_len
+
+            masked_top_sents_input = torch.zeros_like(input_ids)
+            num_of_masked = 0
+            abs_input_ids = []
+            for start_idx, end_idx in zip(top_sents_start_ids[0], top_sens_end_ids[0]):
+                # sample from the input_ids
+                abs_input_ids.append(input_ids[0, start_idx:end_idx])
+            # import pdb;pdb.set_trace()
+
+            input_ids = torch.cat(abs_input_ids).unsqueeze(0)
+            attention_mask = torch.ones(input_ids.shape).cuda()
+
+
+
+
+
             global_attention_mask = torch.zeros_like(attention_mask)
             sent_ids = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
             global_attention_mask[:, sent_ids] = 1
@@ -1183,6 +1256,14 @@ class TGSumModel(LEDModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
+
+        if decoder_input_ids is None and decoder_inputs_embeds is None:
+            # import pdb;
+            # pdb.set_trace()
+            decoder_input_ids = shift_tokens_right(
+                input_ids, self.config.pad_token_id, self.config.decoder_start_token_id
+            )
+
         elif return_dict and not isinstance(encoder_outputs, LEDEncoderBaseModelOutput):
             encoder_outputs = LEDEncoderBaseModelOutput(
                 last_hidden_state=encoder_outputs[0],
@@ -1191,16 +1272,16 @@ class TGSumModel(LEDModel):
                 global_attentions=encoder_outputs[3] if len(encoder_outputs) > 3 else None,
             )
 
-        if topic_model_global_outputs is None:
-            prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
-                                                                                               encoder_outputs[0].mean(dim=1),
-                                                                                               labels=None)  # X_contexual is the source embedding
-        else:
-            prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
-
-        encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs.last_hidden_state)
+        # if topic_model_global_outputs is None:
+        #     prior_mean, prior_variance, posterior_mean, posterior_variance, \
+        #     posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
+        #                                                                                        encoder_outputs[0].mean(dim=1),
+        #                                                                                        labels=None)  # X_contexual is the source embedding
+        # else:
+        #     prior_mean, prior_variance, posterior_mean, posterior_variance, \
+        #     posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
+        #
+        # encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs.last_hidden_state)
 
             # If the user passed a tuple for encoder_outputs, we wrap it in a LEDEncoderBaseModelOutput when return_dict=False
 
@@ -1212,178 +1293,11 @@ class TGSumModel(LEDModel):
                     ext labels and section scores
         """""""""""""""""""""""""""""""""""""""""""""""""""
 
-
-
-        sent_scores = None
-        sect_scores = None
-        if sections_sentence_encoding is None:
-            sent_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                     index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
-
-            section_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                    index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
-
-            sent_scores = torch.sigmoid(
-                self.sent_scorer(sent_repr)
-            ).squeeze(-1)
-
-            sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
-
-
-            LIMIT = 2048  # tokens
-
-            if self.SAMPLING_FROM=='section':
-                sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
-
-                sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
-                end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
-
-                try:
-                    sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
-                except:
-                    print('found noncons')
-                    # import pdb;pdb.set_trace()
-
-                try:
-                    sects_batch_sent_scores = pad_sequence(torch.split(sent_scores[0], section_len[0].tolist()), batch_first=True, padding_value=-1)[None, :, :].repeat(input_ids.size(0), 1, 1)
-                except Exception as ee:
-                    print(ee)
-                    print(doc_ids)
-
-                try:
-                    sects_batch_sent_lens = pad_sequence(torch.split(sent_len[0], section_len[0].tolist()), batch_first=True, padding_value=0)[None, :, :].repeat(input_ids.size(0), 1, 1)
-                except:
-                    import pdb;pdb.set_trace()
-
-                # sects_batch_sent_lens.sum(dim=2)
-                # updating sample_sect_dist based on the total number of tokens in each section.
-
-                updated_sect_dist = (sample_sect_dist - sects_batch_sent_lens.sum(dim=2))
-                fulfilled_sects = updated_sect_dist > 0
-
-                if LIMIT < input_ids.size(-1) and ((~fulfilled_sects).float().sum()) > 0 and fulfilled_sects.float().sum() != fulfilled_sects.size(1):
-                    remaining_toks = (updated_sect_dist * fulfilled_sects).sum()
-                    revisit_section_dist = (sect_scores * ~fulfilled_sects) / (sect_scores * ~fulfilled_sects).sum()
-                    sample_sect_dist_v2 = torch.round(revisit_section_dist * remaining_toks)
-                    sample_sect_dist += sample_sect_dist_v2
-                    sample_sect_dist = torch.where(fulfilled_sects, sample_sect_dist-updated_sect_dist, sample_sect_dist)
-
-                sect_sent_mask = (sects_batch_sent_lens > 0).float()
-
-                top_sents_idxs = torch.argsort(sects_batch_sent_scores, descending=True)
-
-                top_sects_batch_sent_lens = torch.zeros_like(top_sents_idxs).cuda()
-                top_sects_batch_sent_lens.scatter_(2, top_sents_idxs, sects_batch_sent_lens)
-
-                sect_sent_n_selects = (~((torch.cumsum(top_sects_batch_sent_lens, dim=-1)) > sample_sect_dist[:, :, None].expand_as(top_sects_batch_sent_lens)) * sect_sent_mask).sum(dim=-1)
-                top_sents_mask = ((pad_sequence([torch.arange(xx) for x in sect_sent_n_selects for xx in x], padding_value=-1).t()) != -1).cuda()
-                pre_idx = top_sents_idxs[:, :, :int(sect_sent_n_selects.max().item())] * top_sents_mask
-
-                section_len_cum = torch.cumsum(section_len, dim=-1)
-                shifted_section_len = torch.cat((torch.tensor([0])[None, :].cuda(), section_len_cum), dim=-1)
-                # pre_idx_hyp = torch.cat((pre_idx, torch.zeros_like(pre_idx)[:, :, :1]), dim=-1)
-                shifted_section_len = shifted_section_len[:, :, None].repeat(1, 1, pre_idx.size(2))[:, :-1, :]
-                pre_idx = (((pre_idx) + shifted_section_len) * top_sents_mask)
-
-                pre_idx = ((pre_idx+1) * top_sents_mask) - 1
-
-                pre_idx = torch.where(pre_idx > -1, sent_real_ids[pre_idx], 10000000)
-                end_pre_ids = (pre_idx + top_sects_batch_sent_lens[:,:,:pre_idx.size(-1)])
-
-                # sort ids
-                pre_idx = pre_idx.sort()[0]
-                end_pre_ids = end_pre_ids.sort()[0]
-
-                sections_sentence_encoding = []
-                selected_sent_embeddings = []
-
-                for l in range(pre_idx.size(1)):
-                    # import pdb;
-                    # pdb.set_trace()
-                    if top_sents_mask[l].float().sum() == 0:
-                        continue
-                    section_sent_encoding = []
-                    start_idxs = pre_idx[0, l]
-                    end_idxs = end_pre_ids[0, l]
-
-                    for ll in range(start_idxs.size(-1)):
-                        # import pdb;pdb.set_trace()
-
-                        if start_idxs[ll] > 10000000 - 1:
-                            continue
-                        try:
-                            sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]+1]
-                        except:
-                            sent_encoding = encoder_outputs[0][:, start_idxs[ll]:end_idxs[ll]]
-
-                        selected_sent_embeddings.append(encoder_outputs[0][:, start_idxs[ll]].unsqueeze(0))
-                        section_sent_encoding.append(sent_encoding)
-                    try:
-                        sections_sentence_encoding.append(torch.cat(section_sent_encoding, dim=1))
-                    except:
-                        import pdb;pdb.set_trace()
-
-                sections_sentence_encoding = torch.cat(sections_sentence_encoding, dim=1).cuda()
-                selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=1).cuda()
-
-                if self.is_hier:
-                    selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings,
-                                                             # torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda()).last_hidden_state
-                                                             torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda()
-                                                                 )
-
-
-            else:
-
-                sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
-                end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
-
-                sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
-
-                top_sents_ids = torch.argsort(sent_scores, descending=True)
-                # top_sents_len = torch.zeros_like(sent_len)
-
-                # top_sents_len.scatter_(1, top_sents_ids, sent_len)
-                top_sents_len = torch.index_select(sent_len, 1, top_sents_ids[0])
-                top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
-                top_sents_ids = top_sents_ids[:, :top_sents_included]
-
-
-                top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
-                sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
-                top_sens_end_ids = top_sents_start_ids + sent_len
-
-                masked_top_sents_input = torch.zeros_like(input_ids)
-                num_of_masked= 0
-                selected_sent_embeddings = []
-                for start_idx, end_idx in zip(top_sents_start_ids[0], top_sens_end_ids[0]):
-                    masked_top_sents_input[:, start_idx:end_idx] = 1
-                    num_of_masked += len(masked_top_sents_input[0, start_idx:end_idx])
-                    selected_sent_embeddings.append(encoder_outputs[0][:, start_idx])
-
-                try:
-                    selected_sent_embeddings = torch.cat(selected_sent_embeddings, dim=0)
-                except:
-                    print(doc_ids)
-                    import pdb;pdb.set_trace()
-
-                selected_sent_embeddings = selected_sent_embeddings.unsqueeze(0)
-                # torch.where(masked_top_sents_input > -1, input_ids,)
-                mask = masked_top_sents_input.unsqueeze(-1).expand_as(encoder_outputs[0]).bool()
-                sections_sentence_encoding = torch.masked_select(encoder_outputs[0], mask).view(1, num_of_masked, -1)
-                if self.is_hier:
-                    selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings, torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
-
-            """""
-            
-            """
-
         bsz = 1
         if decoder_input_ids is not None:
             n_summary = len(decoder_input_ids[0])
         else: # in validation/test we will generate one summary
             n_summary = 1
-
 
         # creating summary attention mask; no need for summ_attn_mask in val/test
         summ_attn_mask = None
@@ -1393,36 +1307,18 @@ class TGSumModel(LEDModel):
         if self.training: # in validation and test we will generate only one summary + if batching is needed in training
             decoder_input_ids = pad_sequence(decoder_input_ids[0], batch_first=True, padding_value=self.config.pad_token_id).unsqueeze(0).view(bsz*n_summary, -1)
 
-
-
         """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-        """"""""""""""""""""" Section encoding """"""""""""""""""""""""
+        """"""""""""""""""""" Decoding """"""""""""""""""""""""
         """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-
-
-        # if encoder_section_outputs is None:
-        #     section_token_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
-        #     section_pre_encodings = torch.index_select(encoder_outputs[0], 1, section_token_indices)
-        #
-        # if encoder_section_outputs is None:
-        #     section_mask = torch.BoolTensor([True] * section_pre_encodings.size(1)).unsqueeze(0).cuda()
-        ##     encoder_section_outputs = self.encoder_section(hidden_states=section_pre_encodings, topic_emb=topic_emb_sct.unsqueeze(0), attention_mask=section_mask)[0]
-        #
-        # else:
-        ##     encoder_section_outputs is not none.
-            # section_mask = torch.BoolTensor([True] * encoder_section_outputs.size(1)).unsqueeze(0).repeat(encoder_section_outputs.size(0), 1).cuda()
-
-        # if not self.training:
-        #     import pdb;pdb.set_trace()
-
+        selected_sent_embeddings = None
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
-            section_encodings=selected_sent_embeddings.cuda(),
+            section_encodings=selected_sent_embeddings.cuda() if selected_sent_embeddings is not None else None,
             attention_mask=decoder_attention_mask,
-            encoder_attention_mask_section=torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda(),
+            encoder_attention_mask_section=torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).cuda() if selected_sent_embeddings is not None else None,
             summ_attn_mask=summ_attn_mask,
-            encoder_hidden_states=sections_sentence_encoding.cuda(),
-            encoder_attention_mask=torch.ones(sections_sentence_encoding.size(0), sections_sentence_encoding.size(1)).cuda(),
+            encoder_hidden_states=encoder_outputs[0],
+            encoder_attention_mask=attention_mask,
             head_mask=decoder_head_mask,
             cross_attn_head_mask=cross_attn_head_mask,
             past_key_values=past_key_values,
@@ -1439,10 +1335,10 @@ class TGSumModel(LEDModel):
         # import pdb;pdb.set_trace()
         return LEDSeq2SeqModelOutput(
             last_hidden_state=decoder_outputs.last_hidden_state,
-            topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
+            # topic_info=(src_bow_global, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance, posterior_log_variance) if self.use_topic else None,
             past_key_values=decoder_outputs.past_key_values,
             sent_scores=sent_scores if sent_scores is not None else None,
-            sect_scores=sect_scores if sect_scores is not None else None,
+            # sect_scores=sect_scores if sect_scores is not None else None,
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
@@ -1455,11 +1351,11 @@ class TGSumModel(LEDModel):
 
 class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin):
     # _keys_to_ignore_on_load_missing = [r"final_logits_bias", r"lm_head\.weight"]
-    def __init__(self, config: LEDConfig, use_topic=True, task='all'):
+    def __init__(self, config: LEDConfig,  ext_config: RobertaConfig, use_topic=True, task='all'):
         super().__init__(config)
         self.SAMPLING_FROM = 'all'
 
-        self.led = TGSumModel(config, use_topic=use_topic, sampling_from=self.SAMPLING_FROM)
+        self.led = TGSumModel(config, ext_config, use_topic=use_topic, sampling_from=self.SAMPLING_FROM)
         self.task = task
 
         global do_topic
@@ -1477,8 +1373,14 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def get_encoder(self):
         return self.led.get_encoder()
 
+    def get_extractor(self):
+        return self.led.get_extractor()
+
     def is_hier(self):
         return self.led.is_hier
+
+    def _prepare_inputs_for_extractor(self):
+        return self.led.get_prepare_inputs_for_extrator()
 
     def get_sent_scorer(self):
         return self.led.get_sent_scorer()
@@ -1547,10 +1449,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def _convert_2d_labels_to_tensor(self, ext_labels, section_scores):
 
         # removing batch
-        try:
-            ext_labels_tensor = [[] for _ in range(len(ext_labels[0][0]))]
-        except:
-            import pdb;pdb.set_trace()
+        ext_labels_tensor = [[] for _ in range(len(ext_labels[0][0]))]
 
         for ext_labels_batch in ext_labels:
             for sect_labels in ext_labels_batch:
@@ -1578,9 +1477,11 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
     def forward(
             self,
             input_ids=None,
+            input_ids_ext=None,
             src_bow_global=None,
             # src_bow_section=None,
             ext_labels=None,
+            ext_labels_ext=None,
             section_scores=None,
             section_len=None,
             sent_len=None,
@@ -1636,6 +1537,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
         outputs = self.led(
             input_ids,
+            input_ids_ext,
             src_bow_global=src_bow_global,
             # src_bow_section=src_bow_section,
             attention_mask=attention_mask,
@@ -1691,33 +1593,31 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 loss_fct = CrossEntropyLoss()
                 if outputs.sent_scores is not None:
                     loss_sent_fct = nn.BCELoss()
-                    loss_sect_fct = nn.MSELoss(reduction='sum')
+                    # loss_sect_fct = nn.MSELoss(reduction='sum')
 
                 labels = pad_sequence(labels[0], batch_first=True, padding_value=-100).unsqueeze(0).cuda()
-                if outputs.sent_scores is not None:
-                    ext_labels = pad_sequence(ext_labels, batch_first=True, padding_value=-100).unsqueeze(0).cuda()
-                    section_scores = pad_sequence(section_scores, batch_first=True, padding_value=-100).unsqueeze(0).cuda()
-
-
                 masked_lm_loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.view(-1))
                 if outputs.sent_scores is not None:
-                    loss_sent = loss_sent_fct(outputs.sent_scores.expand_as(ext_labels.squeeze(0)), ext_labels.squeeze(0))
-                    loss_sect = loss_sect_fct(outputs.sect_scores.expand_as(section_scores.squeeze(0)), section_scores.squeeze(0))
-                    # masked_lm_loss += (loss_sent + loss_sect)
+                    ext_labels_ext = ext_labels_ext[ext_labels_ext>=0].view(1,ext_labels_ext.shape[1],-1).float()
+                    ext_labels_ext = pad_sequence(ext_labels_ext, batch_first=True, padding_value=-100).unsqueeze(0).cuda()
+                    loss_sent = loss_sent_fct(outputs.sent_scores.expand_as(ext_labels_ext.squeeze(0)), ext_labels_ext.squeeze(0))
+                    # section_scores = pad_sequence(section_scores, batch_first=True, padding_value=-100).unsqueeze(0).cuda()
+                    # loss_sect = loss_sect_fct(outputs.sect_scores.expand_as(section_scores.squeeze(0)), section_scores.squeeze(0))
+                    # masked_lm_loss += (loss_sent + )
 
-                if self.use_topic:
-                    source_bow, word_dists, prior_mean, prior_variance, posterior_mean, \
-                    posterior_variance, posterior_log_variance = outputs.topic_info
+                # if self.use_topic:
+                #     source_bow, word_dists, prior_mean, prior_variance, posterior_mean, \
+                #     posterior_variance, posterior_log_variance = outputs.topic_info
 
                     # backward pass
-                    self.n_components = self.led.num_topics
-                    kl_loss, rl_loss = self._topic_loss(
-                        source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance,
-                        posterior_log_variance
-                    )
+                    # self.n_components = self.led.num_topics
+                    # kl_loss, rl_loss = self._topic_loss(
+                    #     source_bow, word_dists, prior_mean, prior_variance, posterior_mean, posterior_variance,
+                    #     posterior_log_variance
+                    # )
 
                     # this is gonna be added to the whole loss...
-                    topic_loss = ((kl_loss + rl_loss)).sum()
+                    # topic_loss = ((kl_loss + rl_loss)).sum()
 
 
             if not return_dict:
@@ -1809,13 +1709,17 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         return reordered_past
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+                        ext_pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+                        *model_args, **kwargs):
         r"""
             override from_pretrained
         """
 
 
-        config = kwargs.pop("config", None)
+        abs_config = kwargs.pop("abs_config", None)
+        is_inference = kwargs.pop("is_inference", False)
+        ext_config = kwargs.pop("ext_config", None)
         state_dict = kwargs.pop("state_dict", None)
         cache_dir = kwargs.pop("cache_dir", None)
         from_tf = kwargs.pop("from_tf", False)
@@ -1856,10 +1760,10 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         if from_pipeline is not None:
             user_agent["using_pipeline"] = from_pipeline
 
-        # Load config if we don't provide a configuration
-        if not isinstance(config, PretrainedConfig):
-            config_path = config if config is not None else pretrained_model_name_or_path
-            config, model_kwargs = cls.config_class.from_pretrained(
+        # Load abs_config if we don't provide a configuration
+        if not isinstance(abs_config, PretrainedConfig):
+            config_path = abs_config if abs_config is not None else pretrained_model_name_or_path
+            abs_config, model_kwargs = cls.config_class.from_pretrained(
                 config_path,
                 cache_dir=cache_dir,
                 return_unused_kwargs=True,
@@ -1939,9 +1843,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     pretrained_model_name_or_path, filename=filename, revision=revision, mirror=mirror
                 )
 
-                # archive_file_roberta = hf_bucket_url("roberta-large", filename=filename, revision=revision, mirror=mirror )
-                # archive_file_ext = hf_bucket_url("/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/",
-                #                                  filename=filename, revision=revision, mirror=mirror )
+                archive_file_roberta = hf_bucket_url(ext_pretrained_model_name_or_path, filename=filename, revision=revision, mirror=mirror )
 
 
             try:
@@ -1957,18 +1859,8 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     user_agent=user_agent,
                 )
 
-                # resolved_archive_file_roberta = cached_path(
-                #     archive_file_roberta,
-                #     cache_dir=cache_dir,
-                #     force_download=force_download,
-                #     proxies=proxies,
-                #     resume_download=resume_download,
-                #     local_files_only=local_files_only,
-                #     use_auth_token=use_auth_token,
-                #     user_agent=user_agent,
-                # )
                 resolved_archive_file_ext = cached_path(
-                    '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/pytorch_model.bin',
+                    archive_file_roberta,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -1977,6 +1869,17 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                 )
+
+                # resolved_archive_file_ext = cached_path(
+                #     '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/pytorch_model.bin',
+                #     cache_dir=cache_dir,
+                #     force_download=force_download,
+                #     proxies=proxies,
+                #     resume_download=resume_download,
+                #     local_files_only=local_files_only,
+                #     use_auth_token=use_auth_token,
+                #     user_agent=user_agent,
+                # )
 
 
             except RepositoryNotFoundError:
@@ -2096,13 +1999,11 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 state_dict = load_state_dict(resolved_archive_file)
                 state_dict_ext = load_state_dict(resolved_archive_file_ext)
 
-                # state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
-
             # set dtype to instantiate the model under:
             # 1. If torch_dtype is not None, we use that dtype
             # 2. If torch_dtype is "auto", we auto-detect dtype from the loaded state_dict, by checking its first
             #    weights entry - we assume all weights are of the same dtype
-            # we also may have config.torch_dtype available, but we won't rely on it till v5
+            # we also may have abs_config.torch_dtype available, but we won't rely on it till v5
             dtype_orig = None
             if torch_dtype is not None:
                 if isinstance(torch_dtype, str):
@@ -2131,15 +2032,16 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         # state_dict = {n.replace('led.', ''): p for n, p in state_dict.items()}
         # state_dict = {"model." + n: p for n, p in state_dict.items() if 'encoder.' in n or 'decoder.' in n}
 
+
         loaded_state_dict_keys = state_dict.keys()
-        config.name_or_path = pretrained_model_name_or_path
+        abs_config.name_or_path = pretrained_model_name_or_path
 
         # Instantiate model.
         init_contexts = [no_init_weights(_enable=_fast_init)]
 
         with ContextManagers(init_contexts):
-            model = cls(config, use_topic=use_topic, task=task, *model_args, **model_kwargs)
-            # model.resize_token_embeddings(50267) # be causious
+            model = cls(abs_config, ext_config, use_topic=use_topic, task=task, *model_args, **model_kwargs)
+            # model.resize_token_embeddings(50267) # be cautious
             # tokenizer = TGSumTokenizer.from_pretrained(
             #     '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/',
             #     cache_dir=model_args.cache_dir,
@@ -2161,13 +2063,21 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         # import pdb;pdb.set_trace()
 
 
-        added_params = {}
-        for n, p in state_dict.items():
-            if 'encoder_attn.' in n:
-                added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
-            if 'encoder_attn_layer_norm.' in n:
-                # import pdb;pdb.set_trace()
-                added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
+
+        if not is_inference:
+            added_params = {}
+
+            for n, p in state_dict_ext.items():
+                added_params[n.replace('roberta.', 'led.extractor.encoder.encoder.')] = p
+
+            state_dict.update(added_params)
+
+        # for n, p in state_dict.items():
+        #     if 'encoder_attn.' in n:
+        #         added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
+        #     if 'encoder_attn_layer_norm.' in n:
+        #         # import pdb;pdb.set_trace()
+        #         added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
 
         # for n, p in state_dict_roberta.items():
         #     try:
@@ -2178,7 +2088,6 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
         #     except:
         #         pass
         #
-        state_dict.update(added_params)
         # state_dict.update(state_dict_ext)
         # print('Extractive weights loaded...')
 

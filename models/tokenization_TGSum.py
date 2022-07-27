@@ -427,212 +427,11 @@ class TGSumTokenizer(LEDTokenizer):
                 elif self.truncation_side == "right":
                     overflowing_tokens = ids[-window_len:]
 
-                    if 'tgt' in doc_id:
-                        ids = ids[:-num_tokens_to_remove]
 
-                    else:
-
-                        # if doc_id=='SP:9d5bd10c8e123e41aa1421b9a55a32f2a036e790':
-                        #     import pdb;pdb.set_trace()
-
-                        ids = np.array(ids)
-                        indices = np.where(ids == self.EOSECT_ID)[0]
-
-                        # if doc_id == 'SP:4a2f4e8574d83dc747b286b888147b63cdea823e':
-                        #     import pdb;pdb.set_trace()
+                        # ids = np.array(ids)
+                        # indices = np.where(ids == self.EOSECT_ID)[0]
 
                         # only when sample the last section when it is of "conclusion"
-                        if len(indices) > LAST_SAMPLING_SECTION_NUM and self.last_sect_in_conc(section_headings[0][-1]):
-                            indices = np.concatenate(([-1], indices))
-                            # last two sections
-                            last_n_sects_ids = ids[indices[-LAST_SAMPLING_SECTION_NUM-1]+1:]
-                            last_n_ext_labels = ext_labels[-LAST_SAMPLING_SECTION_NUM:]
-                            last_n_section_scores = section_scores[-LAST_SAMPLING_SECTION_NUM:]
-                            # last_n_sect_sent_token = inputs_tokenized[-LAST_SAMPLING_SECTION_NUM]
-                            curr_len = len(last_n_sects_ids)
-
-                            # what if curr_len is more than the allowed??
-                            # should skip the sampling from the last section then... only first tokens...
-
-                            if curr_len < num_tokens_to_preserve:
-
-                                sampling_rest = num_tokens_to_preserve - curr_len
-                                first_ids = []
-                                first_ext_labels = []
-                                first_section_scores = []
-                                sampled = 0
-                                sect_idx = 0
-                                # if doc_id=='SP:fd4240e0f2c6faa6783fe5e1d1e53d0d5f0945a0':
-                                #     import pdb;pdb.set_trace()
-                                # important note: sampling shouldn't be done from the last two scetions!!
-
-                                while sampled < sampling_rest:
-                                    if sect_idx < (len(indices)-1)-LAST_SAMPLING_SECTION_NUM:
-                                        first_ids.append(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
-                                        first_ext_labels.append(ext_labels[sect_idx])
-                                        # first_ext_labels.append([greedy_selection(last_n_sect_sent_token, summary.lower(), 30) for summary in targets])
-                                        first_section_scores.append(section_scores[sect_idx])
-                                        sampled += len(ids[indices[sect_idx]+1:indices[sect_idx+1]+1])
-                                        sect_idx += 1
-
-                                # if doc_id=='SP:8badc3f75194e9780063af5a2f26448e41e733d4':
-                                #     import pdb;pdb.set_trace()
-
-                                if sampled > sampling_rest:
-                                    # remove sentencces from last section to fit sampling criteria
-                                    # first_ids[-1] is the last added section that might be truncated...
-                                    num_tokens_to_remove = sampled - sampling_rest
-                                    # try:
-                                    first_ids[-1] = first_ids[-1][:-num_tokens_to_remove]
-                                    # except:
-                                    #     import pdb;pdb.set_trace()
-
-                                    if len(first_ids[-1]) > 10:
-
-                                        if first_ids[-1][-3] != 2:
-
-                                            if first_ids[-1][-2] != 2:
-                                                first_ids[-1][-2] = 2
-                                            if first_ids[-1][-1] != self.EOSECT_ID:
-                                                first_ids[-1][-1] = self.EOSECT_ID
-                                        else:
-                                            sect_sent_pos = np.where(first_ids[-1] == 0)[0]
-                                            first_ids[-1] = np.concatenate((first_ids[-1][:sect_sent_pos[-1]], [self.EOSECT_ID]))
-                                            # drop the last sentence entirely
-
-
-                                        n_sents_in_last_sect = np.count_nonzero(first_ids[-1] == 0)
-                                        first_ext_labels[-1] = [ex[:n_sents_in_last_sect] for ex in first_ext_labels[-1]]
-
-
-                                    else:
-                                        # drop the whole section!
-                                        first_ids = first_ids[:-1]
-                                        first_ext_labels = first_ext_labels[:-1]
-                                        first_section_scores = first_section_scores[:-1]
-
-
-                                ids = list(itertools.chain.from_iterable([f.tolist() for f in first_ids])) + last_n_sects_ids.tolist()
-                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
-                                #     import pdb;
-                                #     pdb.set_trace()
-                                ext_labels = first_ext_labels + last_n_ext_labels
-                                section_scores = first_section_scores + last_n_section_scores
-
-                            else:
-                                # if curr_len > preserved_tokens_num
-
-                                ids = ids[:-num_tokens_to_remove].tolist()
-                                if ids[-3] != 2:
-                                    if ids[-2] != 2:
-                                        ids[-2] = 2
-                                    if ids[-1] != self.EOSECT_ID:
-                                        ids[-1] = self.EOSECT_ID
-                                else:
-                                    # drop the whole last sentence...
-                                    ids = np.array(ids)
-                                    sent_pos = np.where(ids == 0)[0]
-                                    ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
-                                # we are not sure how many sections are there so process in generic form
-                                sections_num = ids.count(self.BOSECT_ID)
-                                ids = np.array(ids)
-                                sect_indices = np.where(ids==self.EOSECT_ID)[0]
-                                # sect_idx = 0
-                                # while sect_idx < len(sect_indices) - 1:
-
-                                ext_labels = ext_labels[:sections_num]
-                                section_scores = section_scores[:sections_num]  # no change to section score
-
-                                # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
-                                last_sect_sents_num = np.count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1] == 0)
-                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
-                                #     import pdb;
-                                #     pdb.set_trace()
-                                ext_labels = ext_labels[:-1] + [[ex[:last_sect_sents_num] for ex in ext_labels[-1]]]
-                                ids = ids.tolist()
-
-                        else:
-
-                            if len(section_headings[0]) > 1:
-                                # if curr_len > preserved_tokens_num
-                                ids = ids[:-num_tokens_to_remove].tolist()
-                                if ids[-3] != 2:
-                                    if ids[-3] == self.EOSECT_ID:
-                                        ids = ids[:-2]
-
-                                    elif ids[-3] == self.BOSECT_ID:
-                                        ids = ids[:-3]
-
-                                    else:
-                                        if ids[-2] != 2:
-                                            ids[-2] = 2
-                                        if ids[-1] != self.EOSECT_ID:
-                                            ids[-1] = self.EOSECT_ID
-
-
-                                else:
-                                    # drop the whole last sentence...
-                                    ids = np.array(ids)
-                                    sent_pos = np.where(ids == 0)[0]
-                                    ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
-                                # we are not sure how many sections are there so process in generic form
-                                sections_num = ids.count(self.BOSECT_ID)
-                                ids = np.array(ids)
-                                sect_indices = np.where(ids == self.EOSECT_ID)[0]
-                                # sect_idx = 0
-                                # while sect_idx < len(sect_indices) - 1:
-
-                                ext_labels = ext_labels[:sections_num]
-                                # inputs_tokenized = inputs_tokenized[:sections_num]
-                                # ext_labels = []
-                                # for sect_ in inputs_tokenized:
-                                #     sum_labels = []
-                                #     for summ in targets:
-                                #         sum_labels.append(greedy_selection(sect_, summ, 30))
-                                #     ext_labels.append(sum_labels)
-
-                                section_scores = section_scores[:sections_num]  # no change to section score
-
-                                # last_sect_sents_num = ids[sect_indices[-2]+1: sect_indices[-1]+1].count_nonzero(ids[sect_indices[-2]+1: sect_indices[-1]+1]==0)
-                                try:
-                                    last_sect_sents_num = np.count_nonzero(ids[sect_indices[-2] + 1: sect_indices[-1] + 1] == 0)
-                                except:
-                                    last_sect_sents_num = np.count_nonzero(ids[0: sect_indices[-1] + 1] == 0)
-
-                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
-                                #     import pdb;
-                                #     pdb.set_trace()
-                                ext_labels = ext_labels[:-1] + [[ex[:last_sect_sents_num] for ex in ext_labels[-1]]]
-                                ids = ids.tolist()
-
-                                # if doc_id == 'SP:b2fc6ca65add04fb32bcf7622d9098de9004ca2b':
-                                #     import pdb;
-                                #     pdb.set_trace()
-
-                            else:
-
-
-                                # we got only one section...!!!
-                                # normal truncation
-                                # if doc_id=='SP:9326f169cc5e8d2f4268dcf39af31590ee004d98':
-                                #     import pdb;pdb.set_trace()
-                                ids = ids[:-num_tokens_to_remove].tolist()
-                                if ids[-3] != 2:
-                                    if ids[-2] != 2:
-                                        ids[-2] = 2
-                                    if ids[-1] != self.EOSECT_ID:
-                                        ids[-1] = self.EOSECT_ID
-                                else:
-                                    # drop the whole last sentence...
-                                    ids = np.array(ids)
-                                    sent_pos = np.where(ids==0)[0]
-                                    ids = np.concatenate((ids[:sent_pos[-1]], [self.EOSECT_ID])).tolist()
-
-                                # if doc_id == 'SP:a50de9e3cf34fd189763ee172fcff026cbc679dc':
-                                #     import pdb;
-                                #     pdb.set_trace()
-                                ext_labels[0] = [ex[:ids.count(0)] for ex in ext_labels[0]]
-                                section_scores = section_scores # no change to section score
 
                 else:
                     raise ValueError(f"invalid truncation strategy: {self.truncation_side}, use 'left' or 'right'.")
@@ -770,21 +569,21 @@ class TGSumTokenizer(LEDTokenizer):
 
         # Truncation: Handle max sequence length
         overflowing_tokens = []
-        if truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE and max_length and total_len > max_length:
-            ids, pair_ids, overflowing_tokens, ext_labels, section_scores = self.truncate_sequences(
-                ids,
-                ext_labels,
-                section_scores,
-                # target_summaries,
-                # inputs_tokenized,
-                doc_id=doc_ids,
-                section_headings=section_headings,
-                pair_ids=pair_ids,
-                num_tokens_to_remove=total_len - max_length,
-                num_tokens_to_preserve=max_length,
-                truncation_strategy=truncation_strategy,
-                stride=stride,
-            )
+        # if truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE and max_length and total_len > max_length:
+        # ids, pair_ids, overflowing_tokens, ext_labels, section_scores = self.truncate_sequences(
+        #     ids,
+        #     ext_labels,
+        #     section_scores,
+        #     # target_summaries,
+        #     # inputs_tokenized,
+        #     doc_id=doc_ids,
+        #     section_headings=section_headings,
+        #     pair_ids=pair_ids,
+        #     num_tokens_to_remove=total_len - max_length,
+        #     num_tokens_to_preserve=max_length,
+        #     truncation_strategy=truncation_strategy,
+        #     stride=stride,
+        # )
 
 
         # if doc_ids=='SP:f47567af5b9d8a0fee6b5ae908a12327c0016d97':

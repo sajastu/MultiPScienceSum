@@ -26,4 +26,5 @@ if __name__ == '__main__':
     # debuging
     files = glob.glob('/disk1/sajad/datasets/sci/mup/single_tokenized_final2/train/*.json')
     test_data_builder_instance(instance_path=files[random.randint(0, len(files)-1)])
+    # test_data_builder_instance(instance_path='/disk1/sajad/datasets/sci/mup/single_tokenized_final2/val/SP:a6f1094a4c9f38df38c9710b9dcd6299f430fae2.json')
 

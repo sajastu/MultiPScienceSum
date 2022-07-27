@@ -44,7 +44,7 @@ class GenerationMixin(GenerationMixin):
         sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
                                                   dim=-2).squeeze(-1)
 
-        LIMIT = 2048  # tokens
+        LIMIT = 3072  # tokens
 
         if self.SAMPLING_FROM=='section':
             sample_sect_dist = torch.round(
@@ -167,13 +167,69 @@ class GenerationMixin(GenerationMixin):
             return reduced_encoder_outputs, selected_sents_encodings
 
 
+    def _pass_top_abs_sentences(self, sent_scores, input_ids, LIMIT=3072):
+        top_sents_ids = torch.argsort(sent_scores, descending=True)
+
+        sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
+        end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
+
+        sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
+
+        # top_sents_len.scatter_(1, top_sents_ids, sent_len)
+        top_sents_len = torch.index_select(sent_len, 1, top_sents_ids[0])
+        top_sents_included = (~(torch.cumsum(top_sents_len, dim=-1) > LIMIT)).sum()
+        top_sents_ids = top_sents_ids[:, :top_sents_included]
+
+        top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
+        sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
+        top_sens_end_ids = top_sents_start_ids + sent_len
+
+        # masked_top_sents_input = torch.zeros_like(input_ids)
+        # num_of_masked = 0
+        abs_input_ids = []
+        for start_idx, end_idx in zip(top_sents_start_ids[0], top_sens_end_ids[0]):
+            # sample from the input_ids
+            abs_input_ids.append(input_ids[0, start_idx:end_idx])
+        # import pdb;pdb.set_trace()
+
+        input_ids = torch.cat(abs_input_ids).unsqueeze(0)
+        attention_mask = torch.ones(input_ids.shape).cuda()
+
+        return input_ids, attention_mask
+
+    def prepare_inputs_for_extrator(self, input_ids_ext):
+        """
+
+            @input: [BSZ, SEQ_LEN]
+
+            @output: [BSZ, N, SEQ_LEN]
+                @param: N: the number of cunks
+
+
+        """
+
+        input_ids_ext = torch.tensor_split(input_ids_ext[0, :].cuda(),
+                                           ((input_ids_ext[0] == -1000000).nonzero(as_tuple=True)[0]).cpu())
+        input_ids_ext = pad_sequence(input_ids_ext[1:], batch_first=True, padding_value=1)[:, 1:-1].unsqueeze(
+            0)  # drop -1000000
+        # if input_ids_ext.shape[-1] < 512:
+        #     diff = 512 - input_ids_ext.shape[-1]
+        #     t_shape = input_ids_ext.shape
+        #     appended_tensor = torch.ones((t_shape[0], t_shape[1], diff)).cuda()
+        #     input_ids_ext = torch.cat([input_ids_ext, appended_tensor], dim=-1)
+
+        input_ids_ext = input_ids_ext.long() # make sure the tensor is a Long tensor
+
+        return input_ids_ext
+
     def _prepare_encoder_decoder_kwargs_for_generation(
         self, inputs_tensor: torch.Tensor, section_token_index=None, model_kwargs=None, model_input_name: Optional[str] = None
     ) -> Dict[str, Any]:
         # 1. get encoder
         encoder = self.get_encoder()
-        topic_model = self.get_topic_model()
-        fusing_function = self.get_topic_fuse()
+        extractor = self.get_extractor()
+        # topic_model = self.get_topic_model()
+        # fusing_function = self.get_topic_fuse()
 
 
         # 2. prepare encoder args and encoder kwargs from model kwargs
@@ -190,17 +246,26 @@ class GenerationMixin(GenerationMixin):
         # 3. make sure that encoder returns `ModelOutput`
         model_input_name = model_input_name if model_input_name is not None else self.main_input_name
         encoder_kwargs["return_dict"] = True
-        encoder_kwargs[model_input_name] = inputs_tensor
+
+        # make extractor score the sentences
+        sent_scores = extractor(self.prepare_inputs_for_extrator(model_kwargs['input_ids_ext']))
+        input_ids, attention_mask = self._pass_top_abs_sentences(sent_scores, inputs_tensor)
+        encoder_kwargs[model_input_name] = input_ids
+        encoder_kwargs['attention_mask'] = attention_mask
+        encoder_kwargs.pop('input_ids_ext')
 
         # import pdb;pdb.set_trace()
+
         model_kwargs["encoder_outputs"]: ModelOutput = encoder(**encoder_kwargs)
-        section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1,section_token_index.cuda()).cuda()
-        model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], section_pre_encodings.mean(dim=1))
-        model_kwargs["encoder_outputs"].last_hidden_state = fusing_function(model_kwargs["topic_model_global_outputs"][-1], encoder_kwargs['attention_mask'].size(1), model_kwargs["encoder_outputs"].last_hidden_state )
-        model_kwargs["sections_sentence_encoding"], model_kwargs["selected_sent_embeddings"] = self._prepare_reduced_encoder_outputs(model_kwargs["encoder_outputs"],
-                                                                                                                                     encoder_kwargs['input_ids'],
-                                                                                                                                     model_kwargs['section_len'],
-                                                                                                 )
+        model_kwargs["attention_mask"] = attention_mask
+
+        # section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1,section_token_index.cuda()).cuda()
+        # model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], section_pre_encodings.mean(dim=1))
+        # model_kwargs["encoder_outputs"].last_hidden_state = fusing_function(model_kwargs["topic_model_global_outputs"][-1], encoder_kwargs['attention_mask'].size(1), model_kwargs["encoder_outputs"].last_hidden_state )
+        # model_kwargs["sections_sentence_encoding"], model_kwargs["selected_sent_embeddings"] = self._prepare_reduced_encoder_outputs(model_kwargs["encoder_outputs"],
+        #                                                                                                                              encoder_kwargs['input_ids'],
+        #                                                                                                                              model_kwargs['section_len'],
+        #                                                                                          )
 
         # prepare sentence embeddings
 
@@ -252,11 +317,11 @@ class GenerationMixin(GenerationMixin):
             model_kwargs["encoder_outputs"] = encoder_outputs[0].index_select(
                 0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
 
-            model_kwargs["selected_sent_embeddings"] = selected_sent_embeddings.index_select(
-                0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
+            # model_kwargs["selected_sent_embeddings"] = selected_sent_embeddings.index_select(
+            #     0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
 
-            model_kwargs["sections_sentence_encoding"] = sections_sentence_encoding.index_select(
-                0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
+            # model_kwargs["sections_sentence_encoding"] = sections_sentence_encoding.index_select(
+            #     0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device))
 
         return input_ids, model_kwargs
 
@@ -266,6 +331,7 @@ class GenerationMixin(GenerationMixin):
             src_bow_global=None,
             doc_ids=None,
             ext_labels=None,
+            input_ids_ext=None,
             section_scores=None,
             section_token_index=None,
             max_length: Optional[int] = None,
@@ -356,6 +422,7 @@ class GenerationMixin(GenerationMixin):
         model_kwargs["use_cache"] = use_cache
         model_kwargs["src_bow_global"] = src_bow_global
         model_kwargs["ext_labels"] = ext_labels
+        model_kwargs["input_ids_ext"] = input_ids_ext
         model_kwargs["section_scores"] = section_scores
         # model_kwargs["doc_ids"] = doc_ids
 

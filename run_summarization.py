@@ -54,7 +54,7 @@ from transformers import (
     MBartTokenizerFast,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
-    set_seed, LEDForConditionalGeneration, LEDConfig, BartConfig,
+    set_seed, LEDForConditionalGeneration, LEDConfig, BartConfig, RobertaConfig,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
@@ -122,6 +122,12 @@ class ModelArguments:
     """
 
     model_name_or_path: str = field(
+        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    ext_model_name_or_path: str = field(
+        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    mode: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     labeling: str = field(
@@ -462,14 +468,21 @@ def main():
     # download model & vocab.
 
     # AutoConig
-    config = LEDConfig.from_pretrained(
+    abs_config = LEDConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    # config.gradient_checkpointing = True
+    ext_config = RobertaConfig.from_pretrained(
+        model_args.ext_model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+
+    # abs_config.gradient_checkpointing = True
     #TGSumTokenizer
 
     abs_tokenizer = TGSumTokenizer.from_pretrained(
@@ -481,7 +494,7 @@ def main():
     )
 
     ext_tokenizer = TGSumTokenizerExt.from_pretrained(
-        model_args.ext_tokenizer_name if model_args.ext_tokenizer_name else model_args.model_name_or_path,
+        model_args.ext_tokenizer_name if model_args.ext_tokenizer_name else model_args.ext_model_name_or_path,
         cache_dir=model_args.cache_dir,
         use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
@@ -491,34 +504,40 @@ def main():
     #TGSumForConditionalGeneration
     model, loading_info = TGSumForConditionalGeneration.from_pretrained(
         model_args.model_name_or_path,
+        model_args.ext_model_name_or_path,
+        is_inference = (model_args.mode == 'test'),
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
         use_topic=True,
-        config=config,
+        abs_config=abs_config,
+        ext_config=ext_config,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    model.config = config
+    model.config = abs_config
+    #####################################################
+    ############### add <sect> labels...#################
+    #####################################################
 
-    # add <sect> labels...
-    # special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
-    # tokenizer.add_special_tokens(special_tokens_dict)
-    # intialize word embeddings...
-
+    special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
+    abs_tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(abs_tokenizer))
     model.led.shared.weight.requires_grad = False
     model.led.shared.weight[-1, :] = model.led.shared.weight[2, :]
     model.led.shared.weight[-2, :] = model.led.shared.weight[0, :]
     model.led.shared.weight.requires_grad = True
 
+    #####################################################
+    ############### add <sect> labels...#################
+    #####################################################
 
     model.config.num_beams = 4
     model.config.max_length = 256
     model.config.min_length = 100
     model.config.length_penalty = 1.0
-    # model.config.gradient_checkpointing = False
-    # model.config.early_stopping = True
+    # model.abs_config.gradient_checkpointing = False
+    # model.abs_config.early_stopping = True
     model.config.no_repeat_ngram_size = 3
 
     if model.config.decoder_start_token_id is None and isinstance(abs_tokenizer, (MBartTokenizer, MBartTokenizerFast)):
@@ -528,7 +547,7 @@ def main():
             model.config.decoder_start_token_id = abs_tokenizer.convert_tokens_to_ids(data_args.lang)
 
     if model.config.decoder_start_token_id is None:
-        raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
+        raise ValueError("Make sure that `abs_config.decoder_start_token_id` is correctly defined")
 
     # import pdb;pdb.set_trace()
     if (
@@ -654,20 +673,21 @@ def main():
 
         topic_info_tuple = {"topic_info_global": topic_info_global}
 
-        # ext_model_inputs = ext_tokenizer(
-        #     inputs,
-        #     # inputs_tokenized=inputs_tokenized,
-        #     # target_tokenized=target_tokenized,
-        #     max_length=data_args.max_source_length,
-        #     padding=padding,
-        #     truncation=True,
-        #     doc_ids=src_ids,
-        #     section_headings=headings,
-        #     topic_info_tuple=topic_info_tuple,
-        #     ext_labels=ext_labels,#
-        #     section_scores=section_scores,
-        #     labeling=model_args.labeling,
-        #  )
+        ext_model_inputs = ext_tokenizer(
+            inputs,
+            # inputs_tokenized=inputs_tokenized,
+            # target_tokenized=target_tokenized,
+            max_length=data_args.max_source_length,
+            padding=padding,
+            truncation=True,
+            doc_ids=src_ids,
+            section_headings=headings,
+            topic_info_tuple=topic_info_tuple,
+            ext_labels=ext_labels,#
+            section_scores=section_scores,
+            labeling=model_args.labeling,
+         )
+
 
         model_inputs = abs_tokenizer(
             inputs,
@@ -685,6 +705,7 @@ def main():
          )
 
         model_inputs['input_ids_ext'] = ext_model_inputs['input_ids']
+        model_inputs['ext_labels_ext'] = ext_model_inputs['ext_labels']
 
         # import pdb;pdb.set_trace()
 
@@ -974,9 +995,9 @@ def main():
 
             df.to_csv(f'results_{RUN_NAME}_{last_id+0.5}.csv', index=False)
 
-            wb_logger.save(
-                f'results_{RUN_NAME}_{last_id+0.5}.csv'
-            )
+            # wb_logger.save(
+            #     f'results_{RUN_NAME}_{last_id+0.5}.csv'
+            # )
 
 
         # Extract a few results from ROUGE
@@ -994,14 +1015,16 @@ def main():
     # Initialize wandb to get full control access for logging
     global RUN_NAME
     RUN_NAME = None
-    if training_args.report_to != "none":
-        global wb_logger
+    global wb_logger
+    wb_logger = None
 
-        wb_logger = wandb.init(
-            project="huggingface",
-            name=training_args.run_name,
-            tags=["TGSum"],
-        )
+    if training_args.report_to != "none":
+
+        # wb_logger = wandb.init(
+        #     project="huggingface",
+        #     name=training_args.run_name,
+        #     tags=["TGSum"],
+        # )
         RUN_NAME = training_args.run_name
     else:
         wb_logger=None

@@ -460,7 +460,8 @@ def _mp_process_instance(params):
             sect_idx += 1
 
 
-
+    if debug:
+        import pdb;pdb.set_trace()
     sections_tokens = sections_tokens_tmp
     sect_idx = 0
 

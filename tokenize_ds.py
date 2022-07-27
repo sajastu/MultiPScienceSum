@@ -216,27 +216,26 @@ def is_bad_section(heading):
 
 
 def main():
-    print("Preparing to process %s ..." % '/disk1/sajad/datasets/sci/mup')
     raw_files = glob.glob('/disk1/sajad/datasets/sci/mup' + '/*_complete.json')
     # raw_files = glob.glob('/disk1/sajad/datasets/sci/mup/official_test/raw/testing_with_paper_release.jsonl')
     # open raw_files
     for file in raw_files:
-        # if 'train' in file:
+        # if 'val' in file:
         #     continue
+        print("Preparing to process %s ..." % file)
+
         debug_counter = 0
 
         final_list = {}
         with open(file) as fR:
-            for li in fR:
+            for li in tqdm(fR):
                 ent = json.loads(li)
                 paper_id = ent['paper_id']
+
+
+                # if paper_id == 'SP:a6f1094a4c9f38df38c9710b9dcd6299f430fae2':
+                # if True:
                 paper_summary = ent['summary'] if ent['summary']  is not None else 'This is official test sample hence no summary!!!!!'
-
-                # if paper_id != 'SP:23084f30a4183f6965ef97e4cba2082bf2fffd64':
-                #     continue
-                # else:
-                #     continue
-
                 if paper_id not in final_list:
                     paper_info = ent['paper']
                     abstract_text = paper_info['abstractText']
@@ -262,9 +261,23 @@ def main():
                                 pass
 
                             if (abs_chars is not None and text_chars is not None) and abs_chars.strip() == text_chars.strip():
-                                all_section_headings.append('NA')
-                                section_mask.append(False)
-                                continue
+
+                                # first remove the intersected tokens excluding numbers
+                                sect_refined_text = re.sub(r'\d+', '', e['text']).replace('-','')
+                                abs_refined_text = re.sub(r'\d+', '', abstract_text)
+                                abs_refined_text = ' '.join(abs_refined_text.split()).replace('-','')
+                                sect_refined_text = sect_refined_text.replace(abs_refined_text, '').replace('\n', ' ').strip()
+
+                                if len(sect_refined_text) > 0:
+                                    all_section_headings.append('NA')
+                                    e['text'] = sect_refined_text
+                                    section_mask.append(True)
+                                    continue
+
+                                else:
+                                    all_section_headings.append('NA')
+                                    section_mask.append(False)
+                                    continue
 
                             all_section_headings.append('NA')
                             section_mask.append(True)
@@ -340,6 +353,7 @@ def main():
 
                 debug_counter+=1
 
+
         # now tokenizing paper source...
         mp_list = []
         # import pdb;pdb.set_trace()
@@ -377,6 +391,8 @@ def main():
         for paper_id, paper_info in new_dict_saved.items():
             with open(f'{WR_DIR}/{paper_id}.json', mode='w') as fW:
                 json.dump(paper_info, fW)
+        print(f'Done!')
+
 
 
 
