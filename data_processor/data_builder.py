@@ -278,7 +278,7 @@ def format_to_lines(args, corpus_type=None, create_jsons=True):
     # write json files
 
     if create_jsons:
-        corpus_types = ['train', 'val']
+        corpus_types = ['train', 'val', 'test']
         for corpus_type in corpus_types:
             written_insts = 0
             CHUNK_SIZE = 1000
@@ -312,23 +312,6 @@ def format_to_bert(args):
     for json_f in glob.glob(args.jsons_path + f'/' + '*.json'):
         real_name = json_f.split('/')[-1]
         a_lst.append((json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
-
-    # constrain data size...
-    # a_lst = [a_lst[0]]
-
-    total_statistic = {
-        "instances": 0,
-        # "total_turns": 0.,
-        # "processed_turns": 0.,
-        # "max_turns": -1,
-        # "turns_num": [0] * 11,
-        "exceed_length_num": 0,
-        # "exceed_turns_num": 0,
-        "total_src_length": 0.,
-        "src_sent_length_num": [0] * 11,
-        "src_token_length_num": [0] * 11,
-        "total_tgt_length": 0
-    }
 
     file_counter_global = {"all": Counter(), "num": 0, "voc_size": 0}
     file_counter_section = {"all": Counter(), "num": 0, "voc_size": 0}

@@ -148,6 +148,12 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
+
+    mode: str = field(
+        default='train',
+        metadata={"help": "Mode: between 'train' and 'test'"},
+    )
+
     model_revision: str = field(
         default="main",
         metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
@@ -183,6 +189,12 @@ class DataTrainingArguments:
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
+
+    topic_file_path: str = field(
+        default=None,
+        metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
@@ -387,9 +399,6 @@ def main():
     if os.path.exists(f'last_id_{training_args.run_name}.txt'):
         os.remove(f'last_id_{training_args.run_name}.txt')
 
-    with open(f'descriptions/{training_args.run_name}.txt', mode='w') as fW:
-        fW.write(desc_text)
-
     if data_args.source_prefix is None and model_args.model_name_or_path in [
         "t5-small",
         "t5-base",
@@ -420,15 +429,6 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    # Get the datasets: you can either provide your own CSV/JSON training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files this script will use the first column for the full texts and the second column for the
-    # summaries (unless you specify column names for this with the `text_column` and `summary_column` arguments).
-    #
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
@@ -449,6 +449,7 @@ def main():
         if data_args.test_file is not None:
             data_files["test"] = data_args.test_file
             extension = data_args.test_file.split(".")[-1]
+
         raw_datasets = load_dataset(extension, data_files=data_files, cache_dir=model_args.cache_dir, use_auth_token=True if model_args.use_auth_token else None)
 
 
@@ -480,19 +481,12 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    ext_tokenizer = TGSumTokenizerExt.from_pretrained(
-        model_args.ext_tokenizer_name if model_args.ext_tokenizer_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-
     #TGSumForConditionalGeneration
     model, loading_info = TGSumForConditionalGeneration.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
         use_topic=True,
+        is_test=bool( model_args.mode == "test" ),
         config=config,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
@@ -506,19 +500,18 @@ def main():
     # tokenizer.add_special_tokens(special_tokens_dict)
     # intialize word embeddings...
 
-    model.resize_token_embeddings(len(abs_tokenizer))
-    model.led.shared.weight.requires_grad = False
-    model.led.shared.weight[-1, :] = model.led.shared.weight[2, :]
-    model.led.shared.weight[-2, :] = model.led.shared.weight[0, :]
-    model.led.shared.weight.requires_grad = True
+    if model_args.mode != 'test':
+        model.resize_token_embeddings(len(abs_tokenizer))
+        model.led.shared.weight.requires_grad = False
+        model.led.shared.weight[-1, :] = model.led.shared.weight[2, :]
+        model.led.shared.weight[-2, :] = model.led.shared.weight[0, :]
+        model.led.shared.weight.requires_grad = True
 
 
     model.config.num_beams = 4
     model.config.max_length = 256
     model.config.min_length = 100
     model.config.length_penalty = 1.0
-    # model.config.gradient_checkpointing = False
-    # model.config.early_stopping = True
     model.config.no_repeat_ngram_size = 3
 
     if model.config.decoder_start_token_id is None and isinstance(abs_tokenizer, (MBartTokenizer, MBartTokenizerFast)):
@@ -673,6 +666,7 @@ def main():
             inputs,
             # inputs_tokenized=inputs_tokenized,
             # target_tokenized=target_tokenized,
+            topic_file_path=data_args.topic_file_path,
             max_length=data_args.max_source_length,
             padding=padding,
             truncation=True,
@@ -683,10 +677,6 @@ def main():
             section_scores=section_scores,
             labeling=model_args.labeling,
          )
-
-        model_inputs['input_ids_ext'] = ext_model_inputs['input_ids']
-
-        # import pdb;pdb.set_trace()
 
         # Setup the tokenizer for targets
         with abs_tokenizer.as_target_tokenizer():
@@ -951,32 +941,25 @@ def main():
 
 
 
-        if wb_logger is not None:
+        # if wb_logger is not None:
 
             ## format multiple summaries...
-            new_lst_gold_sums = []
-            for j, sums_info_lst in enumerate(entities_to_be_saved_final['gold_summs']):
-                new_lst_gold_sum = json.dumps(sums_info_lst, indent=2)
-                new_lst_gold_sums.append(new_lst_gold_sum)
-            entities_to_be_saved_final['gold_summs'] = new_lst_gold_sums
+        new_lst_gold_sums = []
+        for j, sums_info_lst in enumerate(entities_to_be_saved_final['gold_summs']):
+            new_lst_gold_sum = json.dumps(sums_info_lst, indent=2)
+            new_lst_gold_sums.append(new_lst_gold_sum)
+        entities_to_be_saved_final['gold_summs'] = new_lst_gold_sums
 
 
-            df = pd.DataFrame(entities_to_be_saved_final)
+        df = pd.DataFrame(entities_to_be_saved_final)
 
-            last_id = 0
-            if os.path.exists(LAST_ID_FILENAME):
-                with open(LAST_ID_FILENAME, mode='r') as fR:
-                    for l in fR:
-                        last_id = float(l)
-            else:
-                with open(LAST_ID_FILENAME, mode='w') as fW:
-                    fW.write(str(last_id))
 
-            df.to_csv(f'results_{RUN_NAME}_{last_id+0.5}.csv', index=False)
 
-            wb_logger.save(
-                f'results_{RUN_NAME}_{last_id+0.5}.csv'
-            )
+        df.to_csv(f'test_results.csv', index=False)
+
+            # wb_logger.save(
+            #     f'results_{RUN_NAME}_{last_id+0.5}.csv'
+            # )
 
 
         # Extract a few results from ROUGE
@@ -994,17 +977,18 @@ def main():
     # Initialize wandb to get full control access for logging
     global RUN_NAME
     RUN_NAME = None
-    if training_args.report_to != "none":
-        global wb_logger
+    global wb_logger
+    wb_logger = None
+    # if training_args.report_to != "none":
 
-        wb_logger = wandb.init(
-            project="huggingface",
-            name=training_args.run_name,
-            tags=["TGSum"],
-        )
-        RUN_NAME = training_args.run_name
-    else:
-        wb_logger=None
+        # wb_logger = wandb.init(
+        #     project="huggingface",
+        #     name=training_args.run_name,
+        #     tags=["TGSum"],
+        # )
+        # RUN_NAME = training_args.run_name
+    # else:
+    #     wb_logger=None
 
     # Initialize our Trainer
     trainer = TGSumTrainer(

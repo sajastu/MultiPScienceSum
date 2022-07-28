@@ -9,6 +9,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="barolo-two-phase-normal">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/sajad/packages/summarization/mup-new-two-phase" local="$PROJECT_DIR$" web="/home/sajad/packages/summarization/mup-new-two-phase" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="sajad@barolo:20122 (2)">
         <serverdata>
           <mappings>

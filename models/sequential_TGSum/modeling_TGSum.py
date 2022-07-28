@@ -1230,7 +1230,7 @@ class TGSumModel(LEDModel):
             sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
 
 
-            LIMIT = 2048  # tokens
+            LIMIT = 4096  # tokens
 
             if self.SAMPLING_FROM=='section':
                 sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))
@@ -1816,6 +1816,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
 
         config = kwargs.pop("config", None)
+        is_test = kwargs.pop("is_test", False)
         state_dict = kwargs.pop("state_dict", None)
         cache_dir = kwargs.pop("cache_dir", None)
         from_tf = kwargs.pop("from_tf", False)
@@ -1967,16 +1968,16 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 #     use_auth_token=use_auth_token,
                 #     user_agent=user_agent,
                 # )
-                resolved_archive_file_ext = cached_path(
-                    '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/pytorch_model.bin',
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    resume_download=resume_download,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    user_agent=user_agent,
-                )
+                # resolved_archive_file_ext = cached_path(
+                #     '/disk0/sajad/.cache/sci-trained-models/mup-led-arxiv-6144-ExtFinetuned/checkpoint-18000/pytorch_model.bin',
+                #     cache_dir=cache_dir,
+                #     force_download=force_download,
+                #     proxies=proxies,
+                #     resume_download=resume_download,
+                #     local_files_only=local_files_only,
+                #     use_auth_token=use_auth_token,
+                #     user_agent=user_agent,
+                # )
 
 
             except RepositoryNotFoundError:
@@ -2094,7 +2095,7 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             if not is_sharded and state_dict is None:
                 # Time to load the checkpoint
                 state_dict = load_state_dict(resolved_archive_file)
-                state_dict_ext = load_state_dict(resolved_archive_file_ext)
+                # state_dict_ext = load_state_dict(resolved_archive_file_ext)
 
                 # state_dict_roberta = load_state_dict(resolved_archive_file_roberta)
 
@@ -2160,27 +2161,18 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
 
         # import pdb;pdb.set_trace()
 
+        if not is_test:
+            added_params = {}
+            for n, p in state_dict.items():
+                if 'encoder_attn.' in n:
+                    added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
+                if 'encoder_attn_layer_norm.' in n:
+                    # import pdb;pdb.set_trace()
+                    added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
+            state_dict.update(added_params)
+        else:
+            miskey = state_dict['led.topic_model.beta']
 
-        added_params = {}
-        for n, p in state_dict.items():
-            if 'encoder_attn.' in n:
-                added_params[n.replace('encoder_attn', 'encoder_attn_section')] = p
-            if 'encoder_attn_layer_norm.' in n:
-                # import pdb;pdb.set_trace()
-                added_params[n.replace('encoder_attn_layer_norm', 'encoder_attn_layer_norm_section')] = p
-
-        # for n, p in state_dict_roberta.items():
-        #     try:
-        #         layer_num = int(n.split('roberta.encoder.layer.')[1].split('.')[0])
-        #         if layer_num >= 20:
-        #             added_params[n.replace(f'roberta.encoder.layer.{layer_num}',
-        #                                    f'led.hier_encoder.layer.{layer_num - 20}')] = p
-        #     except:
-        #         pass
-        #
-        state_dict.update(added_params)
-        # state_dict.update(state_dict_ext)
-        # print('Extractive weights loaded...')
 
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,
@@ -2197,6 +2189,9 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
             offload_state_dict=offload_state_dict,
             dtype=torch_dtype,
         )
+
+        if is_test:
+            model.state_dict()['led.topic_model.beta'] = miskey
 
         # make sure token embedding weights are still tied if needed
         model.tie_weights()

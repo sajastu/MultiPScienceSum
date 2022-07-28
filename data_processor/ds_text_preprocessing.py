@@ -13,6 +13,7 @@ remove sentences if no alphabet is used.
 
 
 """
+import argparse
 import glob
 import json
 import os
@@ -124,10 +125,11 @@ def pass_math_threshold(sent_tokens):
     return count < 3
 
 
-def main_final():
-    for se in ['train', 'val', 'test']:
+def main_final(args):
+    CORPURA = ['train', 'val', 'test'] if not args.prep_test else ['test']
+    for se in CORPURA:
     # for se in ['test']:
-        WR_DIR = f'/disk1/sajad/datasets/sci/mup/single_tokenized_final2/{se}/'
+        WR_DIR = f'{args.INP_DIR}/{se}/'
         try:
             os.makedirs(WR_DIR)
         except:
@@ -143,8 +145,8 @@ def main_final():
         #         j_ent = json.loads(l)
         #         paper_sent_labels[j_ent['segment_id']] = j_ent['labels']
 
-        for file in tqdm(glob.glob(f'/disk1/sajad/datasets/sci/mup/single_tokenized_prep2/{se}/*'),
-                     total=len(glob.glob(f'/disk1/sajad/datasets/sci/mup/single_tokenized_prep2/{se}/*'))):
+        for file in tqdm(glob.glob(f'{args.INP_DIR}/{se}/*'),
+                     total=len(glob.glob(f'{args.INP_DIR}/{se}/*'))):
             ent = json.load(open(file))
             # sent_labels = paper_sent_labels[ent['paper_id']]
             # if 4 in sent_labels:
@@ -180,6 +182,8 @@ def main_final():
 
 if __name__ == '__main__':
     # main()
-
-    # read allennlp outputs...
-    main_final()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prep_test", action='store_true')
+    parser.add_argument("--INP_DIR", required=True, type=str)
+    args = parser.parse_args()
+    main_final(args)

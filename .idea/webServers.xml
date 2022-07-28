@@ -9,6 +9,13 @@
           </advancedOptions>
         </fileTransfer>
       </webServer>
+      <webServer id="a44715d7-954b-466b-b80a-92e7a6385ced" name="barolo-two-phase-normal">
+        <fileTransfer accessType="SFTP" host="barolo" port="20122" sshConfigId="d77caf20-b31c-4101-ae2f-a703857b4804" sshConfig="sajad@barolo:20122 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
     </option>
   </component>
 </project>

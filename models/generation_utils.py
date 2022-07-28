@@ -44,7 +44,7 @@ class GenerationMixin(GenerationMixin):
         sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
                                                   dim=-2).squeeze(-1)
 
-        LIMIT = 2048  # tokens
+        LIMIT = 4096  # tokens
 
         if self.SAMPLING_FROM=='section':
             sample_sect_dist = torch.round(

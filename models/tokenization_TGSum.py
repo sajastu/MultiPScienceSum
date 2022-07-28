@@ -199,8 +199,8 @@ class TGSumTokenizer(LEDTokenizer):
 
     # topic_info = torch.load
     def set_global_idf_and_csv(self):
-        self.idf_info_global = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores2/idf_info_global.pt")
-        self.idf_info_section = torch.load("/disk1/sajad/datasets/sci/mup/bert_data_scores2/idf_info_section.pt")
+        self.idf_info_global = torch.load(f"{self.topic_file_path}/idf_info_global.pt")
+        self.idf_info_section = torch.load(f"{self.topic_file_path}/idf_info_section.pt")
         self.conc_keywords = pd.read_csv('/home/sajad/packages/summarization/mup/data_processor/heading_keyword.csv')
         self.conc_keywords = self.conc_keywords['conclusion'].dropna().tolist()
 
@@ -730,7 +730,9 @@ class TGSumTokenizer(LEDTokenizer):
             **kwargs,
         )
 
-        self.set_global_idf_and_csv()
+        if self.topic_file_path is not None:
+            self.set_global_idf_and_csv()
+
         pair = bool(pair_ids is not None)
         len_ids = len(ids)
         len_pair_ids = len(pair_ids) if pair else 0
@@ -944,6 +946,7 @@ class TGSumTokenizer(LEDTokenizer):
         batch_text_or_text_pairs= None,
         # inputs_tokenized= None,
         target_tokenized= None,
+        topic_file_path= None,
         add_special_tokens: bool = True,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
         doc_ids=None,
@@ -968,6 +971,8 @@ class TGSumTokenizer(LEDTokenizer):
         labeling: str = 'pre-selected',
         **kwargs
     ) -> BatchEncoding:
+
+        self.topic_file_path = topic_file_path
 
         # inputs_tokenized = kwargs.pop('inputs_tokenized')
         targets = target_tokenized

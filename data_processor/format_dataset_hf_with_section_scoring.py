@@ -1,3 +1,4 @@
+import argparse
 import glob
 import json
 import math
@@ -41,7 +42,7 @@ def _parse_paper(param):
     return ex
 
 def _cal_rg_sect(params):
-    p_id, sect_sents, summaries, ext_labels = params
+    p_id, sect_sents, summaries, ext_labels, is_test = params
     input_sents = []
     for sect in sect_sents:
         sent_sects = []
@@ -65,17 +66,26 @@ def _cal_rg_sect(params):
 
     # adding section scores
     section_scores = []
+
     for sect_idx, sect in enumerate(sect_sents):
         sums_sect_score = []
         for summ_idx, summ in enumerate(summaries):
             sent_sect_scores = []
             for sect_sent in sect:
-                sents_scores = scorer.score(summ.strip(), sect_sent.strip())
-                sents_scores = [sents_scores['rouge1'].recall, sents_scores['rouge2'].recall, sents_scores['rougeL'].recall]
+                if not is_test:
+                    sents_scores = scorer.score(summ.strip(), sect_sent.strip())
+                    sents_scores = [sents_scores['rouge1'].recall, sents_scores['rouge2'].recall,
+                                    sents_scores['rougeL'].recall]
+                else:
+                    sents_scores = [1.0, 1.0, 1.0]
                 avg_sent_score = np.average(sents_scores)
                 sent_sect_scores.append(avg_sent_score)
-
+            # try:
             sect_sum_labels = ext_labels[sect_idx][summ_idx]
+            # except:
+            #     sect_sum_labels = ext_labels[sect_idx][summ_idx]
+            #
+            #     import pdb;pdb.set_trace()
             sect_sents_ = sect_sents[sect_idx]
             sect_tokens = sum([len(s) for s in sect_sents_tokenized[sect_idx]])
 
@@ -104,16 +114,22 @@ def get_tokens(text):
     return ret
 
 
-def load_topic_info(se):
+def load_topic_info(args, se):
     ret = {}
-    for file in glob.glob(f"/disk1/sajad/datasets/sci/mup/bert_data_scores2/{se}.*.pt"):
+    for file in glob.glob(f"{args.INP_DIR}/{se}.*.pt"):
         file_dict = torch.load(file)
         ret.update(file_dict)
     return ret
 
-if __name__ == '__main__':
+def main(args):
 
-    for se in ['train', 'val']:
+    CORPORA = ['train', 'val', 'test'] if not args.prep_test else ['test']
+
+    is_test = False
+    for se in CORPORA:
+        if se == 'test':
+            is_test = True
+
         json_ents_dict = {}
         with open(f"/disk1/sajad/datasets/sci/mup/{se}_complete.json") as fR:
             for l in fR:
@@ -133,8 +149,7 @@ if __name__ == '__main__':
                     json_ents_dict[ent['paper_id']]['summary'].append(ent['summary'])
 
 
-        topic_info_dict = load_topic_info(se)
-        hf_format = []
+        topic_info_dict = load_topic_info(args, se)
         hf_df = {
             'paper_id': [],
             'source': [],
@@ -151,14 +166,12 @@ if __name__ == '__main__':
         for paper_id, paper_ent in json_ents_dict.items():
 
             hf_df['paper_id'].append(paper_id)
-            if len(topic_info_dict[paper_id]['section_text']) != len((topic_info_dict[paper_id]['topic_info_section'])):
-                import pdb;pdb.set_trace()
 
             hf_df['source'].append(topic_info_dict[paper_id]['sections_sents'])
             hf_df['section_headings'].append(topic_info_dict[paper_id]['section_headings'])
 
             # hf_df['source_tokenized'].append(0)
-            hf_df['summary'].append(paper_ent['summary'])
+            hf_df['summary'].append(paper_ent['summary'] if paper_ent['summary'][0] is not None else ['This is official test set...!!'])
             hf_df['ext_labels'].append(topic_info_dict[paper_id]['ext_labels'])
             hf_df['topic_info_section'].append(json.dumps(topic_info_dict[paper_id]['topic_info_section']))
             hf_df['topic_info_global'].append(json.dumps(topic_info_dict[paper_id]['topic_info_global']))
@@ -171,11 +184,9 @@ if __name__ == '__main__':
 
         section_scores_lst = [0 for _ in range(len(hf_df['paper_id']))]
         paper_sect_tkns_lst = [0 for _ in range(len(hf_df['paper_id']))]
-
-        mp_instances = [(p_id, src, summaries, ext_labels) for p_id, src, summaries, ext_labels in zip(hf_df['paper_id'], hf_df['source'], hf_df['summary'], hf_df['ext_labels'])]
+        mp_instances = [(p_id, src, summaries, ext_labels, is_tst) for p_id, src, summaries, ext_labels, is_tst in zip(hf_df['paper_id'], hf_df['source'], hf_df['summary'], hf_df['ext_labels'], [is_test] * len(hf_df['summary']))]
         # for m in mp_instances:
-        #     if len(m[-1]) > 1:
-        #         _cal_rg_sect(m)
+        #     _cal_rg_sect(m)
         paper_ids_indices = hf_df['paper_id'].copy()
 
         for ret in tqdm(pool.imap_unordered(_cal_rg_sect, mp_instances), total=len(mp_instances)):
@@ -195,10 +206,22 @@ if __name__ == '__main__':
         print('Writing HF files...')
 
         try:
-            os.makedirs('/disk1/sajad/datasets/sci/mup/hf_format/')
+            os.makedirs(f'{args.WR_DIR}')
         except:
             pass
 
         import pandas as pd
         df = pd.DataFrame(hf_df)
-        df.to_parquet(f"/disk1/sajad/datasets/sci/mup/hf_format/{se}-sectScoreV1-srcTokenized.parquet")
+        df.to_parquet(f"{args.WR_DIR}/{args.filename if len(args.filename) > 0 else se + '.parquet'}")
+
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prep_test", action='store_true')
+    parser.add_argument("--INP_DIR", required=True, type=str)
+    parser.add_argument("--WR_DIR", required=True, type=str)
+    parser.add_argument("--filename", default='', type=str)
+    args = parser.parse_args()
+    main(args)
+

@@ -23,6 +23,7 @@ if __name__ == '__main__':
 
     parser.add_argument("-type", default='train', type=str)
     parser.add_argument("-raw_path", default='/disk1/sajad/datasets/sci/mup/single_tokenized_final2/')
+    parser.add_argument("-create_json", default=True, type=bool)
     parser.add_argument("-save_path", default='/disk1/sajad/datasets/sci/mup/bert_data_scores2/')
     parser.add_argument("-jsons_path", default='/disk1/sajad/datasets/sci/mup/jsons/')
     parser.add_argument("-shard_size", default=2000, type=int)
@@ -61,4 +62,4 @@ if __name__ == '__main__':
     except:
         pass
 
-    data_builder.format_to_lines(args, corpus_type=args.type)
+    data_builder.format_to_lines(args, corpus_type=args.type, create_jsons=args.create_json)
