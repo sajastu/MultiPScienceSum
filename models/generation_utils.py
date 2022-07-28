@@ -33,16 +33,23 @@ class GenerationMixin(GenerationMixin):
         section_repr = self.get_repr_from_index_gen(encoder_outputs[0],
                                                 index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
 
-        # import pdb;pdb.set_trace()
+        sect_scorer_ln = self.get_sect_scorer()
+        sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
+                                                  dim=-2).squeeze(-1)
+
+        # use sect_scores to modify sentence repr (update v1.1)
+        expanded_sect_scores = torch.repeat_interleave(sect_scores, section_len[0]).unsqueeze(0)
+
+        # apply the sect scores to sentence embeddings ...
+        sent_repr = expanded_sect_scores.unsqueeze(-1) * sent_repr
+
         sent_scorer_ln = self.get_sent_scorer()
         sent_scores = torch.sigmoid(
             sent_scorer_ln(sent_repr)
         ).squeeze(-1)
 
 
-        sect_scorer_ln = self.get_sect_scorer()
-        sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
-                                                  dim=-2).squeeze(-1)
+
 
         LIMIT = 4096  # tokens
 

@@ -496,11 +496,12 @@ def main():
     model.config = config
 
     # add <sect> labels...
-    # special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
-    # tokenizer.add_special_tokens(special_tokens_dict)
+
     # intialize word embeddings...
 
     if model_args.mode != 'test':
+        special_tokens_dict = {'additional_special_tokens': ['<sect>', '</sect>']}
+        abs_tokenizer.add_special_tokens(special_tokens_dict)
         model.resize_token_embeddings(len(abs_tokenizer))
         model.led.shared.weight.requires_grad = False
         model.led.shared.weight[-1, :] = model.led.shared.weight[2, :]
