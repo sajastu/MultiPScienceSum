@@ -37,7 +37,6 @@ class GenerationMixin(GenerationMixin):
 
         whole_labels = np.array(whole_labels)
         # pred_labels = np.concatenate([[np.zeros(whole_labels[0].shape)] * len(ext_labels[0])], axis=0)
-        import pdb;pdb.set_trace()
 
         pred_labels = np.zeros(whole_labels[0].shape)
         pred_labels[selected_ids[0].cpu().numpy()] = 1
@@ -46,6 +45,10 @@ class GenerationMixin(GenerationMixin):
         prec, rec, f1, _ = precision_recall_fscore_support(whole_labels[2], expanded_preds[2], average='micro')
 
     def _prepare_reduced_encoder_outputs(self, encoder_outputs, input_ids, section_len, ext_labels):
+        # import pdb;
+        # pdb.set_trace()
+        input_ids = input_ids[input_ids != 1].unsqueeze(0)
+        # input_ids = modified_input[modified_input != 50266].unsqueeze(0)
 
         # if input_ids[1]
         sent_repr = self.get_repr_from_index_gen(encoder_outputs[0],
@@ -63,7 +66,7 @@ class GenerationMixin(GenerationMixin):
             sent_scorer_ln(sent_repr)
         ).squeeze(-1)
 
-
+        # import pdb;pdb.set_trace()
         # use sect_scores to modify sentence repr (update v1.1)
         # expanded_sect_scores = torch.repeat_interleave(sect_scores, section_len[0]).unsqueeze(0)
 
@@ -168,8 +171,8 @@ class GenerationMixin(GenerationMixin):
             top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
             sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
 
-            recall, prec = self.calc_recall_prec(top_sents_ids, ext_labels)
-            import pdb;pdb.set_trace()
+            # recall, prec = self.calc_recall_prec(top_sents_ids, ext_labels)
+            # import pdb;pdb.set_trace()
 
             top_sens_end_ids = top_sents_start_ids + sent_len
 
@@ -216,17 +219,42 @@ class GenerationMixin(GenerationMixin):
 
 
 
-        import pdb;pdb.set_trace()
         # 3. make sure that encoder returns `ModelOutput`
         model_input_name = model_input_name if model_input_name is not None else self.main_input_name
         encoder_kwargs["return_dict"] = True
         encoder_kwargs[model_input_name] = inputs_tensor
 
-        # import pdb;pdb.set_trace()
+
+
+
+        sectioned_input_ids = torch.tensor_split(encoder_kwargs['input_ids'][0][encoder_kwargs['input_ids'][0] != 50266], ( (encoder_kwargs['input_ids'][0][encoder_kwargs['input_ids'][0] != 50266] == 50265).nonzero(as_tuple=True)[0]).cpu().tolist())
+        max_len = max([len(s) for s in sectioned_input_ids])
+        shoud_pad_till = ((max_len // 256) + 1) * 256
+        sectioned_input_ids = pad_sequence(sectioned_input_ids[1:], batch_first=True, padding_value=1)[:, 1:]
+
+        if sectioned_input_ids.shape[-1] < shoud_pad_till:
+            # padding to accommodate attention window...
+            diff = shoud_pad_till - sectioned_input_ids.shape[-1]
+            sectioned_input_ids = torch.cat( (sectioned_input_ids, torch.ones(sectioned_input_ids.shape[0], diff).long().cuda()), dim=-1)
+
+        encoder_kwargs[model_input_name] = sectioned_input_ids
+        encoder_kwargs['attention_mask'] = (sectioned_input_ids != 1).float()
+        encoder_kwargs['global_attention_mask'] = (sectioned_input_ids == 0).float()
+
         model_kwargs["encoder_outputs"]: ModelOutput = encoder(**encoder_kwargs)
+        model_kwargs["encoder_outputs"].last_hidden_state = torch.masked_select(model_kwargs["encoder_outputs"].last_hidden_state,
+                                                                encoder_kwargs['attention_mask'].bool().unsqueeze(-1).expand(
+                                                                    model_kwargs["encoder_outputs"].last_hidden_state.size())).view(1,
+                                                                                                                    -1,
+                                                                                                                    1024)
+        # import pdb;pdb.set_trace()
+
         section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1,section_token_index.cuda()).cuda()
+
         model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], section_pre_encodings.mean(dim=1))
+
         model_kwargs["encoder_outputs"].last_hidden_state = fusing_function(model_kwargs["topic_model_global_outputs"][-1], encoder_kwargs['attention_mask'].size(1), model_kwargs["encoder_outputs"].last_hidden_state )
+
         model_kwargs["sections_sentence_encoding"], model_kwargs["selected_sent_embeddings"] = self._prepare_reduced_encoder_outputs(model_kwargs["encoder_outputs"],
                                                                                                                                      encoder_kwargs['input_ids'],
                                                                                                                                      model_kwargs['section_len'],

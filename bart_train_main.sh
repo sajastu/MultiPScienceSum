@@ -35,12 +35,12 @@ CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --predict_with_generate \
     --max_grad_norm 1 \
     --lr_scheduler_type linear \
-    --eval_steps 4180 --save_steps 4180 \
+    --eval_steps 4000 --save_steps 4000 \
     --train_file $DS_DIR/train.parquet \
     --validation_file $DS_DIR/val.parquet \
     --do_train \
     --do_eval \
-    --report_to wandb \
+    --report_to $2 \
     --run_name mup-led-arxiv-3072-6144-AllSents-PrepConc-SectScored \
     --max_source_length 6144 \
     --preprocessing_num_workers 4 \

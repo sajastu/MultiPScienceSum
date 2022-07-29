@@ -89,7 +89,8 @@ class TGSumTrainer(Seq2SeqTrainer):
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = (outputs["loss"] if isinstance(outputs, dict) else outputs[0])
             loss_topic = (outputs["loss_topic"] if isinstance(outputs, dict) else outputs[1])
-            sect_loss = (outputs["sect_loss"] if isinstance(outputs, dict) else outputs[2])
+            # sect_loss = (outputs["sect_loss"] if isinstance(outputs, dict) else outputs[2]) if
+            sect_loss = torch.tensor(0)
             sent_loss = (outputs["sent_loss"] if isinstance(outputs, dict) else outputs[3])
 
         return (loss, loss_topic, outputs) if return_outputs else (loss, loss_topic, sect_loss, sent_loss)
@@ -587,7 +588,7 @@ class TGSumTrainer(Seq2SeqTrainer):
         return loss.detach(), \
                topic_loss.detach(), \
                lm_loss.detach(), \
-               sect_loss.detach(), \
+               sect_loss.detach() if sect_loss is not None else torch.tensor(0), \
                sent_loss.detach()
 
     def create_optimizer(self):

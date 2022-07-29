@@ -1003,6 +1003,7 @@ class TGSumModel(LEDModel):
 
     def __init__(self, config: LEDConfig, use_topic=False, sampling_from='all'):
 
+
         # config.prefix = 'led'
         # self.base_model_prefix = 'led'
         super().__init__(config)
@@ -1070,13 +1071,19 @@ class TGSumModel(LEDModel):
         else:
             bsz = topic_emb.size(0)
 
-        topic_vec = topic_emb.unsqueeze(1).expand(bsz, max_len, -1)
         mapped_vec = vec
+        if len(mapped_vec.shape) < 3:
+            mapped_vec = mapped_vec.unsqueeze(0)
+
+        topic_vec = topic_emb.unsqueeze(1).expand(bsz, mapped_vec.shape[1], -1)
+
+
 
         try:
             gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec, topic_vec], dim=-1)))
-                # gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec.unsqueeze(0), topic_vec], dim=-1)))
+            # gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec.unsqueeze(0), topic_vec], dim=-1)))
         except:
+            import pdb;pdb.set_trace()
             gate = torch.sigmoid(self.topic_gate_linear(torch.cat([mapped_vec.unsqueeze(0), topic_vec], dim=-1)))
             # import pdb;pdb.set_trace()
         fused_vec = (1 - gate) * self.topic_emb_linear(topic_vec) + gate * mapped_vec
@@ -1169,12 +1176,33 @@ class TGSumModel(LEDModel):
             )
 
         if encoder_outputs is None:
-            global_attention_mask = torch.zeros_like(attention_mask)
-            sent_ids = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
-            global_attention_mask[:, sent_ids] = 1
+            # global_attention_mask = torch.zeros_like(attention_mask)
+            # sent_ids = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
+            # global_attention_mask[:, sent_ids] = 1
+            # import pdb;pdb.set_trace()
+
+            ### <sectionizing>...
+            try:
+                sectioned_input_ids = torch.tensor_split(input_ids[0][input_ids[0]!=50266], ((input_ids[0][input_ids[0]!=50266] == 50265).nonzero(as_tuple=True)[0]).cpu().tolist())
+            except:
+                import pdb;pdb.set_trace()
+            max_len = max([len(s) for s in sectioned_input_ids])
+            shoud_pad_till = ((max_len // 256) + 1) * 256
+            sectioned_input_ids = pad_sequence(sectioned_input_ids[1:], batch_first=True, padding_value=1)[:, 1:]
+
+            if sectioned_input_ids.shape[-1] < shoud_pad_till:
+                # padding to accommodate attention window...
+                diff = shoud_pad_till - sectioned_input_ids.shape[-1]
+                sectioned_input_ids = torch.cat((sectioned_input_ids, torch.ones(sectioned_input_ids.shape[0], diff).long().cuda()), dim=-1)
+
+            attention_mask = (sectioned_input_ids != 1).float()
+            global_attention_mask = (sectioned_input_ids == 0).float()
+
+
+            ### </sectionizing>...
 
             encoder_outputs = self.encoder(
-                input_ids=input_ids,
+                input_ids=sectioned_input_ids,
                 attention_mask=attention_mask,
                 global_attention_mask=global_attention_mask,
                 head_mask=head_mask,
@@ -1183,6 +1211,17 @@ class TGSumModel(LEDModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
+
+            ##### sectionizng ===> <flattening>
+
+            try:
+                encoder_outputs.last_hidden_state = torch.masked_select(encoder_outputs.last_hidden_state, attention_mask.bool().unsqueeze(-1).expand(encoder_outputs.last_hidden_state.size())).view(1, -1, 1024)
+            except:
+                import pdb;
+                pdb.set_trace()
+            ##### </flattening>
+
+
         elif return_dict and not isinstance(encoder_outputs, LEDEncoderBaseModelOutput):
             encoder_outputs = LEDEncoderBaseModelOutput(
                 last_hidden_state=encoder_outputs[0],
@@ -1217,15 +1256,17 @@ class TGSumModel(LEDModel):
         sent_scores = None
         sect_scores = None
         if sections_sentence_encoding is None:
-            sent_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                     index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
+            modified_input = input_ids[input_ids != 50265].unsqueeze(0)
+            input_ids = modified_input[modified_input != 50266].unsqueeze(0)
 
-            section_repr = self.get_repr_from_index(encoder_outputs[0],
-                                                    index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
+            sent_repr = self.get_repr_from_index(encoder_outputs[0],  index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
+
+            # section_repr = self.get_repr_from_index(encoder_outputs[0],
+            #                                         index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
 
 
 
-            sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
+            # sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
             sent_scores = torch.sigmoid(
                 self.sent_scorer(sent_repr)
             ).squeeze(-1)
@@ -1344,6 +1385,7 @@ class TGSumModel(LEDModel):
 
             else:
 
+
                 sent_real_ids = (input_ids[0] == 0).nonzero(as_tuple=True)[0]
                 end_pre_ids = (input_ids[0] == 2).nonzero(as_tuple=True)[0]
 
@@ -1362,6 +1404,7 @@ class TGSumModel(LEDModel):
                 sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
                 top_sens_end_ids = top_sents_start_ids + sent_len
 
+
                 masked_top_sents_input = torch.zeros_like(input_ids)
                 num_of_masked= 0
                 selected_sent_embeddings = []
@@ -1378,9 +1421,14 @@ class TGSumModel(LEDModel):
 
                 selected_sent_embeddings = selected_sent_embeddings.unsqueeze(0)
                 # torch.where(masked_top_sents_input > -1, input_ids,)
-                mask = masked_top_sents_input.unsqueeze(-1).expand_as(encoder_outputs[0]).bool()
+                try:
+                    mask = masked_top_sents_input.unsqueeze(-1).expand_as(encoder_outputs[0]).bool()
+                except:
+                    import pdb;pdb.set_trace()
                 sections_sentence_encoding = torch.masked_select(encoder_outputs[0], mask).view(1, num_of_masked, -1)
                 if self.is_hier:
+
+
                     selected_sent_embeddings = self.hier_encoder(selected_sent_embeddings, torch.ones(selected_sent_embeddings.size(0), selected_sent_embeddings.size(1)).bool().cuda())
 
             """""
@@ -1711,7 +1759,8 @@ class TGSumForConditionalGeneration(LEDForConditionalGeneration, GenerationMixin
                 masked_lm_loss = loss_fct(lm_logits.view(-1, self.config.vocab_size), labels.view(-1))
                 if outputs.sent_scores is not None:
                     loss_sent = loss_sent_fct(outputs.sent_scores.expand_as(ext_labels.squeeze(0)), ext_labels.squeeze(0))
-                    loss_sect = loss_sect_fct(outputs.sect_scores.expand_as(section_scores.squeeze(0)), section_scores.squeeze(0))
+                    # loss_sect = loss_sect_fct(outputs.sect_scores.expand_as(section_scores.squeeze(0)), section_scores.squeeze(0))
+                    loss_sect = None
                     # masked_lm_loss += (loss_sent + loss_sect)
 
                 if self.use_topic:

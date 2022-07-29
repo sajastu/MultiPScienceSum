@@ -469,6 +469,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    config.attention_window = [256] * len(config.attention_window)
 
     # config.gradient_checkpointing = True
     #TGSumTokenizer
