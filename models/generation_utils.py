@@ -16,6 +16,8 @@ import torch
 from transformers.pytorch_utils import torch_int_div
 import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
+import numpy as np
+from sklearn.metrics import precision_recall_fscore_support
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,26 @@ class GenerationMixin(GenerationMixin):
     def get_repr_from_index_gen(self, from_tensor, index):
         return from_tensor[:,index, :]
 
-    def _prepare_reduced_encoder_outputs(self, encoder_outputs, input_ids, section_len):
+    def calc_recall_prec(self, selected_ids, ext_labels):
+        ext_labels = ext_labels[0]
+        whole_labels = [[] for _ in range(len(ext_labels[0]))]
+        for label_sect in ext_labels:
+
+
+            for sum_idx in range(len(ext_labels[0])):
+              whole_labels[sum_idx].extend(label_sect[sum_idx].tolist())
+
+        whole_labels = np.array(whole_labels)
+        # pred_labels = np.concatenate([[np.zeros(whole_labels[0].shape)] * len(ext_labels[0])], axis=0)
+        import pdb;pdb.set_trace()
+
+        pred_labels = np.zeros(whole_labels[0].shape)
+        pred_labels[selected_ids[0].cpu().numpy()] = 1
+        expanded_preds = np.concatenate([[pred_labels] * len(ext_labels[0])], axis=0)
+
+        prec, rec, f1, _ = precision_recall_fscore_support(whole_labels[2], expanded_preds[2], average='micro')
+
+    def _prepare_reduced_encoder_outputs(self, encoder_outputs, input_ids, section_len, ext_labels):
 
         # if input_ids[1]
         sent_repr = self.get_repr_from_index_gen(encoder_outputs[0],
@@ -37,21 +58,19 @@ class GenerationMixin(GenerationMixin):
         sect_scores = torch.nn.functional.softmax(sect_scorer_ln(section_repr),
                                                   dim=-2).squeeze(-1)
 
-        # use sect_scores to modify sentence repr (update v1.1)
-        expanded_sect_scores = torch.repeat_interleave(sect_scores, section_len[0]).unsqueeze(0)
-
-        # apply the sect scores to sentence embeddings ...
-        sent_repr = expanded_sect_scores.unsqueeze(-1) * sent_repr
-
         sent_scorer_ln = self.get_sent_scorer()
         sent_scores = torch.sigmoid(
             sent_scorer_ln(sent_repr)
         ).squeeze(-1)
 
 
+        # use sect_scores to modify sentence repr (update v1.1)
+        # expanded_sect_scores = torch.repeat_interleave(sect_scores, section_len[0]).unsqueeze(0)
 
+        # apply the sect scores to sentence embeddings ...
+        # sent_repr = expanded_sect_scores.unsqueeze(-1) * sent_repr
 
-        LIMIT = 4096  # tokens
+        LIMIT = 3072  # tokens
 
         if self.SAMPLING_FROM=='section':
             sample_sect_dist = torch.round(
@@ -139,7 +158,6 @@ class GenerationMixin(GenerationMixin):
             sent_len = ((end_pre_ids - sent_real_ids) + 1)[None, :]
 
             top_sents_ids = torch.argsort(sent_scores, descending=True)
-            top_sents_len = torch.zeros_like(sent_len)
 
             # top_sents_len.scatter_(1, top_sents_ids, sent_len)
             top_sents_len = torch.index_select(sent_len, 1, top_sents_ids[0])
@@ -149,6 +167,10 @@ class GenerationMixin(GenerationMixin):
 
             top_sents_start_ids = sent_real_ids[top_sents_ids.sort(dim=1)[0]]
             sent_len = torch.index_select(sent_len, 1, top_sents_ids.sort(dim=1)[0].squeeze(0))
+
+            recall, prec = self.calc_recall_prec(top_sents_ids, ext_labels)
+            import pdb;pdb.set_trace()
+
             top_sens_end_ids = top_sents_start_ids + sent_len
 
             masked_top_sents_input = torch.zeros_like(input_ids)
@@ -194,6 +216,7 @@ class GenerationMixin(GenerationMixin):
 
 
 
+        import pdb;pdb.set_trace()
         # 3. make sure that encoder returns `ModelOutput`
         model_input_name = model_input_name if model_input_name is not None else self.main_input_name
         encoder_kwargs["return_dict"] = True
@@ -207,6 +230,7 @@ class GenerationMixin(GenerationMixin):
         model_kwargs["sections_sentence_encoding"], model_kwargs["selected_sent_embeddings"] = self._prepare_reduced_encoder_outputs(model_kwargs["encoder_outputs"],
                                                                                                                                      encoder_kwargs['input_ids'],
                                                                                                                                      model_kwargs['section_len'],
+                                                                                                                                     model_kwargs['ext_labels']
                                                                                                  )
 
         # prepare sentence embeddings

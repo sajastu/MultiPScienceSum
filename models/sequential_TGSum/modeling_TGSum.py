@@ -1224,22 +1224,22 @@ class TGSumModel(LEDModel):
                                                     index=((input_ids[0] == input_ids[0][0]).nonzero(as_tuple=True)[0]))
 
 
+
             sect_scores = torch.nn.functional.softmax(self.sect_scorer(section_repr), dim=-2).squeeze(-1)
-
-
-            # use sect_scores to modify sentence repr (update v1.1)
-            expanded_sect_scores = torch.repeat_interleave(sect_scores, section_len[0]).unsqueeze(0)
-
-            # apply the sect scores to sentence embeddings ...
-            sent_repr = expanded_sect_scores.unsqueeze(-1) * sent_repr
-
             sent_scores = torch.sigmoid(
                 self.sent_scorer(sent_repr)
             ).squeeze(-1)
 
+            # use sect_scores to modify sentence repr (update v1.1)
+            # expanded_sect_scores = torch.repeat_interleave(sect_scores, section_len[0]).unsqueeze(0)
+
+            # apply the sect scores to sentence embeddings ...
+            # sent_repr = expanded_sect_scores.unsqueeze(-1) * sent_repr
 
 
-            LIMIT = 4096  # tokens
+
+
+            LIMIT = 3072  # tokens
 
             if self.SAMPLING_FROM=='section':
                 sample_sect_dist = torch.round(torch.tensor([LIMIT] * (section_repr.size(1))).unsqueeze(0).cuda() * sect_scores.squeeze(-1))

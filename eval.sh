@@ -26,7 +26,7 @@ CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --max_grad_norm 1 \
     --lr_scheduler_type linear \
     --do_eval \
-    --validation_file $DS_DIR/test.parquet \
+    --validation_file $DS_DIR/val.parquet \
     --max_source_length 6144 \
     --preprocessing_num_workers 4 \
     --mode test \

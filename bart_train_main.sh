@@ -15,11 +15,11 @@ export TOPIC_FILE_PATH="/disk1/sajad/datasets/sci/mup/bert_data/"
 
 
 
-CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
+CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --mode train \
     --model_name_or_path $MODEL_NAME \
     --tokenizer_name $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-4096-6144-AllSents-PrepConc \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-3072-6144-AllSents-PrepConc-SectScored \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
@@ -41,7 +41,7 @@ CUDA_VISIBLE_DEVICES=1 python run_summarization.py \
     --do_train \
     --do_eval \
     --report_to wandb \
-    --run_name mup-led-arxiv-4096-6144-AllSents-PrepConc \
+    --run_name mup-led-arxiv-3072-6144-AllSents-PrepConc-SectScored \
     --max_source_length 6144 \
     --preprocessing_num_workers 4 \
     --metric_for_best_model rougeL_f \
