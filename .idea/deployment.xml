@@ -29,7 +29,7 @@
       <paths name="sajad@brunello:20022 password">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/sajad/packages/summarization/mup" local="$PROJECT_DIR$" web="/home/sajad/packages/summarization/mup" />
+            <mapping deploy="/home/sajad/packages/summarization/mup-topic-2ph" local="$PROJECT_DIR$" web="/home/sajad/packages/summarization/mup-topic-2ph" />
           </mappings>
           <excludedPaths>
             <excludedPath local="true" path="$PROJECT_DIR$/data_processor/mup" />

@@ -45,9 +45,7 @@ class GenerationMixin(GenerationMixin):
         prec, rec, f1, _ = precision_recall_fscore_support(whole_labels[2], expanded_preds[2], average='micro')
 
     def _prepare_reduced_encoder_outputs(self, encoder_outputs, input_ids, section_len, ext_labels):
-        # import pdb;
-        # pdb.set_trace()
-        input_ids = input_ids[input_ids != 1].unsqueeze(0)
+
         # input_ids = modified_input[modified_input != 50266].unsqueeze(0)
 
         # if input_ids[1]
@@ -224,9 +222,6 @@ class GenerationMixin(GenerationMixin):
         encoder_kwargs["return_dict"] = True
         encoder_kwargs[model_input_name] = inputs_tensor
 
-
-
-
         sectioned_input_ids = torch.tensor_split(encoder_kwargs['input_ids'][0][encoder_kwargs['input_ids'][0] != 50266], ( (encoder_kwargs['input_ids'][0][encoder_kwargs['input_ids'][0] != 50266] == 50265).nonzero(as_tuple=True)[0]).cpu().tolist())
         max_len = max([len(s) for s in sectioned_input_ids])
         shoud_pad_till = ((max_len // 256) + 1) * 256
@@ -241,22 +236,22 @@ class GenerationMixin(GenerationMixin):
         encoder_kwargs['attention_mask'] = (sectioned_input_ids != 1).float()
         encoder_kwargs['global_attention_mask'] = (sectioned_input_ids == 0).float()
 
+
         model_kwargs["encoder_outputs"]: ModelOutput = encoder(**encoder_kwargs)
-        model_kwargs["encoder_outputs"].last_hidden_state = torch.masked_select(model_kwargs["encoder_outputs"].last_hidden_state,
-                                                                encoder_kwargs['attention_mask'].bool().unsqueeze(-1).expand(
-                                                                    model_kwargs["encoder_outputs"].last_hidden_state.size())).view(1,
-                                                                                                                    -1,
-                                                                                                                    1024)
+        model_kwargs["encoder_outputs"].last_hidden_state = torch.masked_select(model_kwargs["encoder_outputs"].last_hidden_state, encoder_kwargs['attention_mask'].bool().unsqueeze(-1).expand( model_kwargs["encoder_outputs"].last_hidden_state.size())).view(1, -1,  1024)
         # import pdb;pdb.set_trace()
 
-        section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1,section_token_index.cuda()).cuda()
+        # section_pre_encodings = torch.index_select(model_kwargs["encoder_outputs"][0], 1, section_token_index.cuda()).cuda()
 
-        model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], section_pre_encodings.mean(dim=1))
+        modified_input = inputs_tensor[inputs_tensor != 50265].unsqueeze(0)
+        inputs_tensor = modified_input[modified_input != 50266].unsqueeze(0)
+        sentence_indices = ((inputs_tensor[0] == 0).nonzero(as_tuple=True)[0])
+        model_kwargs["topic_model_global_outputs"] = topic_model(model_kwargs['src_bow_global'], model_kwargs['encoder_outputs'][0][:, sentence_indices, :].mean(dim=1), labels=None)
 
         model_kwargs["encoder_outputs"].last_hidden_state = fusing_function(model_kwargs["topic_model_global_outputs"][-1], encoder_kwargs['attention_mask'].size(1), model_kwargs["encoder_outputs"].last_hidden_state )
 
         model_kwargs["sections_sentence_encoding"], model_kwargs["selected_sent_embeddings"] = self._prepare_reduced_encoder_outputs(model_kwargs["encoder_outputs"],
-                                                                                                                                     encoder_kwargs['input_ids'],
+                                                                                                                                     inputs_tensor,
                                                                                                                                      model_kwargs['section_len'],
                                                                                                                                      model_kwargs['ext_labels']
                                                                                                  )

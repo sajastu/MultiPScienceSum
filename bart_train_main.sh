@@ -19,7 +19,7 @@ CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --mode train \
     --model_name_or_path $MODEL_NAME \
     --tokenizer_name $MODEL_NAME \
-    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-3072-6144-AllSents-PrepConc-SectScored \
+    --output_dir /disk0/$USER/.cache/sci-trained-models/mup-led-arxiv-3072-6144-AllSents-PrepConc-Sectionized-isHier \
     --per_device_train_batch_size=1 \
     --per_device_eval_batch_size=1 \
     --learning_rate 3e-5 \
@@ -41,7 +41,7 @@ CUDA_VISIBLE_DEVICES=0 python run_summarization.py \
     --do_train \
     --do_eval \
     --report_to $2 \
-    --run_name mup-led-arxiv-3072-6144-AllSents-PrepConc-SectScored \
+    --run_name mup-led-arxiv-3072-6144-AllSents-PrepConc-Sectionized-isHier \
     --max_source_length 6144 \
     --preprocessing_num_workers 4 \
     --metric_for_best_model rougeL_f \

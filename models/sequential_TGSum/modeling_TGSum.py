@@ -532,12 +532,13 @@ class LEDTopicDecoderAttention(nn.Module):
 
 
 class TGSumDecoderLayer(nn.Module):
-    def __init__(self, config: LEDConfig, use_topic=True, k=0, init_k=5):
+    def __init__(self, config: LEDConfig, use_topic=True, k=0, init_k=5, is_hier=False):
         super().__init__()
         self.embed_dim = config.d_model
         self.use_topic = use_topic
         self.k = k
         self.init_k = init_k
+        self.is_hier = is_hier
 
         self.self_attn = LEDDecoderAttention(
             embed_dim=self.embed_dim,
@@ -560,13 +561,14 @@ class TGSumDecoderLayer(nn.Module):
 
         self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
 
-        self.encoder_attn_section = LEDDecoderAttention(
-            self.embed_dim,
-            config.decoder_attention_heads,
-            dropout=config.attention_dropout,
-            is_decoder=True,
-        )
-        self.encoder_attn_layer_norm_section = nn.LayerNorm(self.embed_dim)
+        if self.is_hier:
+            self.encoder_attn_section = LEDDecoderAttention(
+                self.embed_dim,
+                config.decoder_attention_heads,
+                dropout=config.attention_dropout,
+                is_decoder=True,
+            )
+            self.encoder_attn_layer_norm_section = nn.LayerNorm(self.embed_dim)
 
         # if self.use_topic:
 
@@ -643,20 +645,22 @@ class TGSumDecoderLayer(nn.Module):
             residual = hidden_states
 
             cross_attn_past_key_value_word = past_key_value[2:4] if past_key_value is not None else None
-            cross_attn_past_key_value_section = past_key_value[4:] if past_key_value is not None else None
 
-            hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
-                self.encoder_attn_section(
-                    hidden_states=hidden_states,  # decoder query
-                    key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
-                    attention_mask=encoder_attention_mask_section,
-                    layer_head_mask=cross_attn_layer_head_mask,
-                    past_key_value=cross_attn_past_key_value_section,
-                    output_attentions=output_attentions,
-                )
-            hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
-            hidden_states = residual + hidden_states
-            hidden_states = self.encoder_attn_layer_norm_section(hidden_states)
+            if self.is_hier:
+                cross_attn_past_key_value_section = past_key_value[4:] if past_key_value is not None else None
+
+                hidden_states, cross_attn_weights_section, cross_attn_present_key_value_section = \
+                    self.encoder_attn_section(
+                        hidden_states=hidden_states,  # decoder query
+                        key_value_states=section_encoder_outputs.repeat(hidden_states.size(0), 1, 1) if self.training else section_encoder_outputs,
+                        attention_mask=encoder_attention_mask_section,
+                        layer_head_mask=cross_attn_layer_head_mask,
+                        past_key_value=cross_attn_past_key_value_section,
+                        output_attentions=output_attentions,
+                    )
+                hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+                hidden_states = residual + hidden_states
+                hidden_states = self.encoder_attn_layer_norm_section(hidden_states)
 
             hidden_states, cross_attn_weights_word, cross_attn_present_key_value_word = \
                 self.encoder_attn(
@@ -673,9 +677,10 @@ class TGSumDecoderLayer(nn.Module):
             hidden_states = self.encoder_attn_layer_norm(hidden_states)
 
 
-
-            present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_section
-            # present_key_value = present_key_value + cross_attn_present_key_value_word
+            if self.is_hier:
+                present_key_value = present_key_value + cross_attn_present_key_value_word + cross_attn_present_key_value_section
+            else:
+                present_key_value = present_key_value + cross_attn_present_key_value_word
 
         # Fully Connected
         residual = hidden_states
@@ -707,7 +712,7 @@ class TGSumDecoder(LEDDecoder):
         embed_tokens (nn.Embedding): output embedding
     """
 
-    def __init__(self, config: LEDConfig, embed_tokens: Optional[nn.Embedding] = None, use_topic=False):
+    def __init__(self, config: LEDConfig, embed_tokens: Optional[nn.Embedding] = None, use_topic=False, is_hier=False):
         super().__init__(config)
         self.dropout = config.dropout
         self.layerdrop = config.decoder_layerdrop
@@ -723,7 +728,7 @@ class TGSumDecoder(LEDDecoder):
             self.max_target_positions,
             config.d_model,
         )
-        self.layers = nn.ModuleList([TGSumDecoderLayer(config, use_topic=use_topic, k=idx) for idx in range(config.decoder_layers)])
+        self.layers = nn.ModuleList([TGSumDecoderLayer(config, use_topic=use_topic, k=idx, is_hier=is_hier) for idx in range(config.decoder_layers)])
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
 
         self.gradient_checkpointing = False
@@ -1009,6 +1014,7 @@ class TGSumModel(LEDModel):
         super().__init__(config)
         padding_idx, vocab_size = config.pad_token_id, config.vocab_size
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
+        self.is_hier = True
 
         self.sent_scorer = nn.Linear(config.d_model, 1)
         self.sect_scorer = nn.Linear(config.d_model, 1)
@@ -1016,7 +1022,7 @@ class TGSumModel(LEDModel):
         self.encoder = LEDEncoder(config, self.shared)
         self.encoder.gradient_checkpointing = True
 
-        self.decoder = TGSumDecoder(config, self.shared, use_topic=use_topic)
+        self.decoder = TGSumDecoder(config, self.shared, use_topic=use_topic, is_hier=self.is_hier)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1026,7 +1032,6 @@ class TGSumModel(LEDModel):
         topic_emb_size = 300
         self.top_words_dim = 3001
 
-        self.is_hier = True
         if self.is_hier:
             self.hier_encoder = TransformerEncoder(config.d_model, d_ff=2048, heads=4,
                                                    dropout=0.2, num_inter_layers=2)
@@ -1198,6 +1203,9 @@ class TGSumModel(LEDModel):
             attention_mask = (sectioned_input_ids != 1).float()
             global_attention_mask = (sectioned_input_ids == 0).float()
 
+            modified_input = input_ids[input_ids != 50265].unsqueeze(0)
+            input_ids = modified_input[modified_input != 50266].unsqueeze(0)
+            sentence_indices = ((input_ids[0] == 0).nonzero(as_tuple=True)[0])
 
             ### </sectionizing>...
 
@@ -1232,14 +1240,14 @@ class TGSumModel(LEDModel):
 
         if topic_model_global_outputs is None:
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
-            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,
-                                                                                               encoder_outputs[0].mean(dim=1),
-                                                                                               labels=None)  # X_contexual is the source embedding
+            posterior_log_variance, word_dists, estimated_labels, topic_emb = self.topic_model(src_bow_global,  encoder_outputs[0][:,sentence_indices,:].mean(dim=1), labels=None)  # X_contexual is the source embedding
+            encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1),
+                                                                   encoder_outputs.last_hidden_state)
+
         else:
             prior_mean, prior_variance, posterior_mean, posterior_variance, \
             posterior_log_variance, word_dists, estimated_labels, topic_emb = topic_model_global_outputs
 
-        encoder_outputs.last_hidden_state = self._topic_vec_ge(topic_emb, attention_mask.size(1), encoder_outputs.last_hidden_state)
 
             # If the user passed a tuple for encoder_outputs, we wrap it in a LEDEncoderBaseModelOutput when return_dict=False
 
@@ -1256,8 +1264,7 @@ class TGSumModel(LEDModel):
         sent_scores = None
         sect_scores = None
         if sections_sentence_encoding is None:
-            modified_input = input_ids[input_ids != 50265].unsqueeze(0)
-            input_ids = modified_input[modified_input != 50266].unsqueeze(0)
+
 
             sent_repr = self.get_repr_from_index(encoder_outputs[0],  index=((input_ids[0] == 0).nonzero(as_tuple=True)[0]))
 

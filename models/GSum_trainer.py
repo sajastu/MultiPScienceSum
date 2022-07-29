@@ -312,8 +312,6 @@ class TGSumTrainer(Seq2SeqTrainer):
             step = -1
             for step, inputs in enumerate(epoch_iterator):
                 # import pdb;pdb.set_trace()
-                if step < 1380:
-                    continue
                 # else:
                 #     steps_trained_progress_bar.update(step)
 
