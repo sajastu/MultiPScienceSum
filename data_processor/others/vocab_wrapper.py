@@ -22,12 +22,9 @@ class VocabWrapper(object):
     def _glove_train(self, ex):
         pass
 
-    def _word2vec_train(self, ex):
-        if self.model.wv.vectors.size == 0:
-            self.model.build_vocab(ex, update=False)
-        else:
-            self.model.build_vocab(ex, update=True)
-        self.model.train(ex, total_examples=self.model.corpus_count, epochs=1)
+    # def _build_vocab(self, ex):
+
+        # self.model.train(ex, total_examples=self.model.corpus_count, epochs=1)
 
     def _glove_report(self):
         pass
@@ -143,16 +140,16 @@ class VocabWrapper(object):
         else:
             self._word2vec_init()
 
-    def train(self, ex):
+    def _build_vocab(self, ex):
         """
         ex: training examples.
             [['我', '爱', '中国', '。'],
              ['这', '是', '一个', '句子', '。']]
         """
-        if self.mode == "glove":
-            self._glove_train(ex)
+        if self.model.wv.vectors.size == 0:
+            self.model.build_vocab(ex, update=False)
         else:
-            self._word2vec_train(ex)
+            self.model.build_vocab(ex, update=True)
 
     def report(self):
         if self.mode == "glove":
@@ -172,7 +169,7 @@ class VocabWrapper(object):
         else:
             self._word2vec_load_model(path)
 
-    def save_emb(self, path):
+    def save_vocab(self, path):
         if self.mode == "glove":
             self._glove_save_emb(path)
         else:

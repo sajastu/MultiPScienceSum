@@ -210,44 +210,21 @@ class TGSumTokenizerExt(LEDTokenizer):
         self.conc_keywords = self.conc_keywords['conclusion'].dropna().tolist()
 
     def generate_src_bow(self, topic_src_info_global, input_ids, doc_id, ids):
-        all_bows_section = []
-        truncate_section = input_ids.count(self.EOSECT_ID)
         vocab_size = self.idf_info_global["voc_size"]
-        all_file_counter_section = self.idf_info_section["all"]
-        all_file_counter_global = self.idf_info_global["all"]
-        file_num_global = self.idf_info_global["num"]
-        file_num_section = self.idf_info_section["num"]
-
-        ### creating section bow
-
-        # for topic_src_info_section in topic_src_info_sections[:truncate_section]:
-        #     all_bow = torch.zeros([vocab_size], dtype=torch.float)
-        #     all_counter = topic_src_info_section
-        #     all_counter_sum = sum(all_counter.values())
-        #
-        #     for key, value in all_counter.items():
-        #         all_tf = value / all_counter_sum
-        #         all_file_count = all_file_counter_section[int(key)]
-        #         all_idf = math.log(file_num_section / (all_file_count + 1.))
-        #         all_bow[int(key)] = all_tf * all_idf
-        #
-        #     all_bows_section.append(all_bow)
+        all_vocabs_count_global = self.idf_info_global["all"]
+        document_num_global = self.idf_info_global["num"]
 
         ### creating global bow
         all_bow_global = torch.zeros([vocab_size], dtype=torch.float)
         all_counter_global = topic_src_info_global
-        all_counter_global_sum = sum(all_counter_global.values())
-        for key, value in all_counter_global.items():
-            all_tf = value / all_counter_global_sum
-            all_file_count_global = all_file_counter_global[int(key)]
-            all_idf = math.log(file_num_global / (all_file_count_global + 1.))
-            all_bow_global[int(key)] = all_tf * all_idf
+        all_tf_in_doc = sum(all_counter_global.values())
 
-        # if len(all_bows_section) != input_ids.count(self.EOSECT_ID):
-        #     import pdb;pdb.set_trace()
-        # assert len(all_bows_section) == input_ids.count(self.EOSECT_ID), "N/A equal sections"
+        for vocab_id, vocab_tf_in_doc in all_counter_global.items():
+            normalized_tf = vocab_tf_in_doc / all_tf_in_doc
+            vocab_count_global = all_vocabs_count_global[int(vocab_id)]
+            idf = math.log(document_num_global / (vocab_count_global + 1.))
+            all_bow_global[int(vocab_id)] = normalized_tf * idf
 
-        # return all_bows_section, all_bow_global
         return all_bow_global
 
     def generate_summ_bow(self, topic_summ_infos):

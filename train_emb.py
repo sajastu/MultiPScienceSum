@@ -2,6 +2,8 @@ import argparse
 import os
 import json
 import glob
+import time
+from collections import Counter
 from multiprocessing import Pool
 from os.path import join as pjoin
 
@@ -17,6 +19,43 @@ import nltk
 from nltk.corpus import stopwords
 sws = stopwords.words('english')
 
+import torch
+
+from transformers import LEDTokenizer
+tokenizer = LEDTokenizer.from_pretrained("allenai/led-large-16384-arxiv")
+
+class Vocab(object):
+    def __init__(self, vocab_size=3000):
+        self.vocab_size = vocab_size
+        self.vocab_mapping = {}
+        self.all_counter = Counter()
+
+    def _build_vocab(self, contextualized_vocab_ids):
+        counter = 0
+        all_vocabs = {}
+        for token_id in contextualized_vocab_ids:
+            if token_id not in all_vocabs.keys():
+                all_vocabs[token_id] = counter
+                counter += 1
+
+        self.vocab_mapping = all_vocabs
+        assert len(self.vocab_mapping) == self.vocab_size, f"Vocab mapping should have {self.vocab_size}, but it has {len(self.vocab_mapping)}!!"
+
+    def _v2i(self, contextualized_id):
+        try:
+            return self.vocab_mapping[contextualized_id]
+        except:
+            return None
+
+    def _update_vocab_counter(self, counter):
+        counter = [c for c in counter if c in self.vocab_mapping.keys()]
+        self.all_counter.update(counter)
+
+
+    def save_vocab(self, path):
+        torch.save(self.vocab_mapping, path)
+
+
 def get_sentence_tokens(text):
     doc_nlp = nlp(text)
     ret = []
@@ -28,6 +67,11 @@ def get_sentence_tokens(text):
         # ret.append(sent)
     return ret
 
+def get_sentence_tokens_contextualized_tokenizer(text):
+    tokens = tokenizer.tokenize(text.lower())
+    token_ids = tokenizer.convert_tokens_to_ids(tokens)
+    return token_ids, tokens
+
 
 
 def train_emb(args):
@@ -35,52 +79,61 @@ def train_emb(args):
     print("Preparing to process %s ..." % data_dir)
 
     ex_num = 0
-    vocab_wrapper = VocabWrapper(args.mode, args.emb_size)
-    vocab_wrapper.init_model()
+    vocab_wrapper = Vocab(vocab_size=3000)
 
     file_ex = []
     instances = []
 
-    for corpus_type in ['train', 'val']:
+    for corpus_type in ['train', 'val', 'test']:
         for json_f in glob.glob(f'{data_dir}/' + f'/{corpus_type}/' + '*.json'):
             instances.append(json.load(open(json_f)))
 
 
-    print(f'All instances: {len(instances)}')
     documents = []
     for ins in instances:
         pr_instances = []
         for section in ins['sections_txt_tokenized']:
             pr_instances.append(section['text'])
-        documents.extend(pr_instances)
+        documents.append(' '.join(pr_instances))
+    tic = time.perf_counter()
+    print()
+    print(f'\t Processing All documents: {len(documents)} \t ')
 
-        # for summary in ins['summaries']:
-            # summ_sent_tokens = get_sentence_tokens(summary)
-            # for summ_sent_token in summ_sent_tokens:
-            #     pr_instances.append(summary)
-
-        # documents.append(' '.join(pr_instances))
 
     sp = WhiteSpacePreprocessingStopwords(documents=documents, vocabulary_size=3000, min_words=2, stopwords_list=sws)
-    preprocessed_docs, unpreprocessed_docs, vocabulary, retained_indices = sp.preprocess()
-    pool = Pool(17)
+    vocabulary_ids = sp.preprocess(tokenizer=tokenizer)
 
-    for tokens in tqdm(pool.imap_unordered(get_sentence_tokens, preprocessed_docs), total=len(preprocessed_docs)):
-        file_ex.append(tokens)
+    print(f'\t Length of distinct vocab_ids: {len(set(vocabulary_ids))}')
 
-    print("Training embeddings...")
-    vocab_wrapper.train(file_ex)
-    vocab_wrapper.report()
-    print("Datasets size: %d" % ex_num)
-    vocab_wrapper.save_emb(args.emb_path)
+    toc = time.perf_counter()
+    print(f'\t {toc - tic:0.4f} seconds -- Processing Done!')
+
+
+    tic = time.perf_counter()
+    print(f'\t Tokenizing documents...')
+    vocab_wrapper._build_vocab(vocabulary_ids)
+
+    pool = Pool(16)
+    for tokens in tqdm(pool.imap_unordered(get_sentence_tokens_contextualized_tokenizer, documents), total=len(documents)):
+        vocab_wrapper._update_vocab_counter(list(tokens[0]))
+
+    toc = time.perf_counter()
+    print(f'\t {toc - tic:0.4f} seconds -- Tokenization Done!')
+
+    tic = time.perf_counter()
+    print(f'\t Building vocabularies...')
+    print(f'\t Vocab len: {len(vocabulary_ids)}')
+
+    toc = time.perf_counter()
+    print(f'\t {toc - tic:0.4f} seconds -- Vocab builiding Done!')
+
+    vocab_wrapper.save_vocab(args.vocab_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-mode", default='word2vec', type=str, choices=['glove', 'word2vec'])
-    parser.add_argument("-data_path", default="/disk1/sajad/datasets/sci/mup/single_tokenized_final2/", type=str)
-    parser.add_argument("-emb_size", default=100, type=int)
-    parser.add_argument("-emb_path", default="/disk1/sajad/w2v_embeds/w2v_mup_reduced.emb", type=str)
+    parser.add_argument("-data_path", default="/disk1/sajad/datasets/sci/mup/single_tokenized/", type=str)
+    parser.add_argument("-vocab_path", default="/disk1/sajad/w2v_embeds/mup_vocab.pt", type=str)
 
     args = parser.parse_args()
 

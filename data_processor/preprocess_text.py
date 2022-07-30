@@ -4,6 +4,9 @@ from nltk.corpus import stopwords as stop_words
 from gensim.utils import deaccent
 import warnings
 
+from tqdm import tqdm
+
+
 class WhiteSpacePreprocessing():
     """
     Provides a very simple preprocessing script that filters infrequent tokens from text
@@ -93,39 +96,46 @@ class WhiteSpacePreprocessingStopwords():
         self.min_words = min_words
         self.remove_numbers = remove_numbers
 
-    def preprocess(self):
+    def preprocess(self, tokenizer):
         """
         Note that if after filtering some documents do not contain words we remove them. That is why we return also the
         list of unpreprocessed documents.
 
         :return: preprocessed documents, unpreprocessed documents and the vocabulary list
         """
+        print()
+        print('\t Deaccenting text...')
         preprocessed_docs_tmp = self.documents
-        preprocessed_docs_tmp = [deaccent(doc.lower()) for doc in preprocessed_docs_tmp]
+        # preprocessed_docs_tmp = [deaccent(doc.lower()) for doc in preprocessed_docs_tmp]
+        print('\t Punctuation correction...')
+
         preprocessed_docs_tmp = [doc.translate(
             str.maketrans(string.punctuation, ' ' * len(string.punctuation))) for doc in preprocessed_docs_tmp]
         if self.remove_numbers:
             preprocessed_docs_tmp = [doc.translate(str.maketrans("0123456789", ' ' * len("0123456789")))
                                      for doc in preprocessed_docs_tmp]
-        preprocessed_docs_tmp = [' '.join([w for w in doc.split() if len(w) > 0 and w not in self.stopwords])
-                                 for doc in preprocessed_docs_tmp]
+
+        print('\t Tokenizing documents...')
+
+        preprocessed_docs_tmp_2 = []
+        for doc in tqdm(preprocessed_docs_tmp, total=len(preprocessed_docs_tmp)):
+            tokens = tokenizer.tokenize(doc.lower())
+            tokens_ids = tokenizer.convert_tokens_to_ids(tokens)
+            valid_tokens = []
+            for w, w_id in zip(tokens, tokens_ids):
+                if w_id != 3 and len(w) > 2 and 'Ġ' in w and w.replace('Ġ', '') not in self.stopwords:
+                    valid_tokens.append(w)
+            preprocessed_docs_tmp_2.append(' '.join(valid_tokens))
+
+        preprocessed_docs_tmp = preprocessed_docs_tmp_2
+        print('\t Fitting TFIDF vector...')
 
         vectorizer = TfidfVectorizer(max_features=self.vocabulary_size, max_df=self.max_df)
         vectorizer.fit_transform(preprocessed_docs_tmp)
         temp_vocabulary = set(vectorizer.get_feature_names())
+        ret_vocab = [w.replace('ġ', 'Ġ') for w in list(temp_vocabulary)]
+        ret_vocab = [wid for wid in tokenizer.convert_tokens_to_ids(ret_vocab) if wid != 3]
 
-        preprocessed_docs_tmp = [' '.join([w for w in doc.split() if w in temp_vocabulary])
-                                 for doc in preprocessed_docs_tmp]
-
-        preprocessed_docs, unpreprocessed_docs, retained_indices = [], [], []
-        for i, doc in enumerate(preprocessed_docs_tmp):
-            if len(doc) > 0 and len(doc) >= self.min_words:
-                preprocessed_docs.append(doc)
-                unpreprocessed_docs.append(self.documents[i])
-                retained_indices.append(i)
-
-        vocabulary = list(set([item for doc in preprocessed_docs for item in doc.split()]))
-
-        return preprocessed_docs, unpreprocessed_docs, vocabulary, retained_indices
+        return ret_vocab[:self.vocabulary_size]
 
 
